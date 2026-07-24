@@ -1,13 +1,6 @@
-
-
-
-
-
-
-
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional, List
+from typing import Optional
 
 from beanie import Document, Link
 from pydantic import Field
@@ -36,7 +29,7 @@ class WordModel(Document):
 class ParagraphModel(Document):
     topic: str = Field(..., min_length=3) 
     content: str = Field(..., min_length=10) 
-    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     class Settings:
         name = "paragraphs"
@@ -49,7 +42,7 @@ class SentenceModel(Document):
     
     paragraph_id: Link[ParagraphModel]
 
-    words: List[Link[WordModel]] = Field(default=[])
+    words: list[Link[WordModel]] = Field(default_factory=list)
 
     class Settings:
         name = "sentences"
