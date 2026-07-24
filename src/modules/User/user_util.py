@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-SECRET_KEY = os.getenv("SECRET_KEY", "OMNI_ENGLISH_SUPER_SECRET_KEY_DAI_VUONG")
+SECRET_KEY = os.getenv("SECRET_KEY", "OMNI_ENGLISH_SUPER_SECRET_KEY")
 security = HTTPBearer()
 
 class UserUtil:
