@@ -1,5 +1,6 @@
 
-import datetime
+from datetime import datetime
+from time import timezone
 from typing import Dict, List
 from beanie import Document
 from pydantic import Field
@@ -11,7 +12,7 @@ class ReadingVocabMatchingModel(Document):
 
     pairs: List[Dict[str, str]] = Field(..., min_items=1)
     
-    created_at: datetime = Field(default_factory=datetime.UTC)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
 
     class Settings:
         name = "reading_vocab_matchings"

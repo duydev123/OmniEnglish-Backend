@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from beanie import Document
 from pydantic import Field
@@ -22,7 +22,7 @@ class UserFreeSpeakingModel(Document):
     ai_feedback: Optional[str] = None
     suggested_improvements: List[str] = Field(default=[]) 
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
 
     class Settings:
         name = "user_free_speakings"
@@ -46,7 +46,7 @@ class UserSpeakingHistoryModel(Document):
     fluency_score: int = Field(..., ge=0, le=100)   
     status: str = Field(default="NEEDS REVIEW") 
     
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
 
     class Settings:
         name = "user_speaking_histories"

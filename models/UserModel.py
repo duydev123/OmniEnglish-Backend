@@ -2,7 +2,7 @@
 
 
 
-import datetime
+from datetime import datetime, timezone
 
 from beanie import Document
 from pydantic import EmailStr, Field
@@ -12,7 +12,7 @@ class UserModel(Document):
   username: str = Field(..., min_length=3, max_length=50)
   email: EmailStr
   role: str = Field(default="user")
-  createdAt: datetime = Field(default_factory=datetime.UTC)
+  createdAt: datetime = Field(default_factory=datetime.now(timezone.utc))
   avarta: str
   class Settings:
     name = "users"

@@ -7,8 +7,15 @@ import os
 
 from models import UserModel
 from models.Paragraph import ParagraphModel, SentenceModel, WordModel
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
+
+
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -25,8 +32,14 @@ def Read_Root():
   return "Server is runing..."
 
 
+
+
 app.add_middleware(
   CORSMiddleware,
 )
+
+
+app.include_router
+
 
 

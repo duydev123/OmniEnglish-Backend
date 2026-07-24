@@ -4,10 +4,10 @@
 
 
 
-from ast import List
-import datetime
+
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 from beanie import Document, Link
 from pydantic import Field
@@ -36,7 +36,7 @@ class WordModel(Document):
 class ParagraphModel(Document):
     topic: str = Field(..., min_length=3) 
     content: str = Field(..., min_length=10) 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.now(timezone.utc))
 
     class Settings:
         name = "paragraphs"
