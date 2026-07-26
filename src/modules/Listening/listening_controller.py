@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from classes.ListeningClass import (
+from .listening_dto import (
     ListeningSessionStartResponse,
     ListeningDraftRequest,
     ListeningDraftResponse,

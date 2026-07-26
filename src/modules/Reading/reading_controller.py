@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from classes.ReadingClass import (
+from .Reading_dto import (
     ReadingSessionStartResponse
 )
 

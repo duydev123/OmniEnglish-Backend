@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from classes.Vocabulary import (
+from .Vocabulary_dto import (
     VocabularyCollectionResponse,
     UpdateWordStatusRequest,
     UpdateCollectionProgressRequest,

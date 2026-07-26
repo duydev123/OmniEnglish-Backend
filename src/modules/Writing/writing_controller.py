@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from classes.WritingClass import (
+from .Writing_dto import (
     WritingPromptResponse,
     WritingDraftRequest,
     WritingDraftResponse,

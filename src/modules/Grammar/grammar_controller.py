@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from classes.GrammarClass import (
+from .Grammar_dto import (
     GrammarSessionStartResponse,
     GrammarDraftRequest,
     GrammarDraftResponse,

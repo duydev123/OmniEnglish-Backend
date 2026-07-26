@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from classes.SpeakingClass import SpeakingPromptResponse, SpeakingSegmentSubmitRequest, SpeakingSubmitResponse
+from .speaking_dto import SpeakingPromptResponse, SpeakingSegmentSubmitRequest, SpeakingSubmitResponse
 
 
 router = APIRouter()
