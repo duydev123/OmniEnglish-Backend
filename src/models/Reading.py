@@ -8,9 +8,10 @@ from pydantic import Field
 # 1. BẢNG BÀI ĐỌC READING (Passage & Đề thi gốc)
 # ==========================================
 class ReadingPassageModel(Document):
+    topic: str = Field(..., min_length=3)
     title: str = Field(..., min_length=3)                     # VD: "The Rise of Digital Nomads"
     content: str = Field(..., min_length=10)                  # Nội dung bài đọc (HTML/Markdown)
-    image_url: Optional[str] = None                           # URL ảnh minh họa trong bài đọc
+    image_url: Optional[str] = None                         # URL ảnh minh họa trong bài đọc
     
     time_limit_minutes: int = Field(default=15)               # Thời gian làm bài (phút)
     total_questions: int = Field(default=20)                  # Tổng số câu hỏi trong bài đọc
@@ -36,7 +37,7 @@ class ReadingVocabMatchingModel(Document):
 
 
 class ReadingSentenceCompletionModel(Document):
-    passage_id: Link[ReadingPassageModel]
+    passage_id: Link[ReadingPassageModel]          # Link tới bài đọc
     order: int = Field(default=2)
     template_text: str = Field(..., min_length=1)             # Đoạn văn chứa ô trống
     correct_answers: Dict[str, str] = Field(...)             # Đáp án đúng cho từng ô
@@ -65,6 +66,7 @@ class ReadingMultipleChoiceModel(Document):
 class UserReadingSessionModel(Document):
     user_id: str = Field(..., min_length=1)
     passage_id: Link[ReadingPassageModel]
+    attempt_number: int = Field(default= 1, ge=1)
     
     # Tiến độ & Thời gian
     completed_questions: int = Field(default=0)              # VD: 13
@@ -78,9 +80,9 @@ class UserReadingSessionModel(Document):
     status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
     
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
+    start_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     class Settings:
         name = "user_reading_sessions"
         indexes = [
-            [("user_id", 1), ("passage_id", 1)]
+            [("user_id", 1), ("passage_id", 1), ("attempt_number", 1)]
         ]

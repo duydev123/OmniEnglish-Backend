@@ -25,6 +25,15 @@ from modules.Writing import writing_controller
 from modules.Speaking import speaking_controller
 from modules.Vocabulary import vocab_controller
 from modules.Auth import auth_controller
+from modules.Seed import seed_controller
+
+from models.Reading import (
+    ReadingPassageModel,
+    ReadingVocabMatchingModel,
+    ReadingSentenceCompletionModel,
+    ReadingMultipleChoiceModel,
+    UserReadingSessionModel
+)
 
 
 
@@ -35,7 +44,11 @@ async def lifespan(app: FastAPI):
 
     await init_beanie(
         database=client.get_database("omni_english_db"),
-        document_models=[ UserModel],
+        document_models=[ UserModel, ReadingPassageModel,
+            ReadingVocabMatchingModel,
+            ReadingSentenceCompletionModel,
+            ReadingMultipleChoiceModel,
+            UserReadingSessionModel,],
     )
     yield
     client.close()
@@ -66,6 +79,7 @@ app.include_router(speaking_controller.router, prefix="/api/v1/speaking", tags=[
 app.include_router(writing_controller.router, prefix="/api/v1/writing", tags=["Writing Module"])
 app.include_router(grammar_controller.router, prefix="/api/v1/grammar", tags=["Grammar Module"])
 app.include_router(vocab_controller.router, prefix="/api/v1/vocabulary", tags=["Vocabulary Module"])
+app.include_router(seed_controller.router, prefix="/api/v1/seed", tags=["Seed Data"])
 @app.get("/")
 def read_root():
     return {"message": "Khởi tạo server thành công!"}

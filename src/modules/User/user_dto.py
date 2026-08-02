@@ -24,7 +24,6 @@ class TokenResponse(BaseModel):
 
 
 
-
 # --- Sub-Schema Cài đặt ---
 class UserSettingsResponse(BaseModel):
     focus_areas: List[str]                                  #[cite: 17]
