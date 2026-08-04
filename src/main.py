@@ -29,9 +29,10 @@ from modules.Seed import seed_controller
 
 from models.Reading import (
     ReadingPassageModel,
-    ReadingVocabMatchingModel,
-    ReadingSentenceCompletionModel,
     ReadingMultipleChoiceModel,
+    ReadingHeadingMatchingModel,
+    ReadingFillBlankModel,
+    ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
 
@@ -45,9 +46,10 @@ async def lifespan(app: FastAPI):
     await init_beanie(
         database=client.get_database("omni_english_db"),
         document_models=[ UserModel, ReadingPassageModel,
-            ReadingVocabMatchingModel,
-            ReadingSentenceCompletionModel,
             ReadingMultipleChoiceModel,
+            ReadingHeadingMatchingModel,
+            ReadingFillBlankModel,
+            ReadingTrueFalseNotGivenModel,
             UserReadingSessionModel,],
     )
     yield
