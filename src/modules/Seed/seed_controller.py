@@ -7,6 +7,13 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     ReadingFillBlankModel
 )
+from models.Listening import (
+    ListeningPassageModel,
+    ListeningMultipleChoiceModel,
+    ListeningCompletionModel,
+    UserListeningSessionModel
+)
+from .listening_mock import MOCK_LISTENING_PASSAGES
 from .reading_mock import (
     MOCK_READING_PASSAGES,
     # MOCK_HEADING_MATCHINGS,
@@ -68,6 +75,62 @@ async def seed_reading_passages():
         "data": results
     }
 
+@router.post("/seed-listening-passages")
+async def seed_listening_passages():
+    """Seed tất cả dữ liệu Listening (Passage + câu hỏi)"""
+    try:
+        # Xóa dữ liệu cũ
+        await ListeningPassageModel.delete_all()
+        await ListeningMultipleChoiceModel.delete_all()
+        await ListeningCompletionModel.delete_all()
+        await UserListeningSessionModel.delete_all()
+        
+        results = []
+        stats = {
+            "passages": 0,
+            "multiple_choices": 0,
+            "completions": 0
+        }
+        
+        for mock_data in MOCK_LISTENING_PASSAGES:
+            # 1. Tạo passage
+            passage_data = mock_data["passage"]
+            passage = ListeningPassageModel(**passage_data)
+            await passage.insert()
+            stats["passages"] += 1
+            
+            # 2. Tạo multiple choices
+            for mc_data in mock_data.get("multiple_choices", []):
+                mc = ListeningMultipleChoiceModel(
+                    passage_id=passage,
+                    **mc_data
+                )
+                await mc.insert()
+                stats["multiple_choices"] += 1
+            
+            # 3. Tạo completions
+            for comp_data in mock_data.get("completions", []):
+                comp = ListeningCompletionModel(
+                    passage_id=passage,
+                    **comp_data
+                )
+                await comp.insert()
+                stats["completions"] += 1
+            
+            results.append({
+                "title": passage.title,
+                "passage_id": str(passage.id),
+                "total_questions": passage.total_questions
+            })
+        
+        return {
+            "status": "success",
+            "message": f"🌱 Seeded {len(results)} listening passages with all question types!",
+            "stats": stats,
+            "data": results
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # @router.post("/seed-reading-headings")
 # async def seed_reading_headings():
 #     results = []

@@ -19,10 +19,10 @@ class ListeningPassageModel(Document):
     #    "en": "Today is November 26th.", 
     #    "vi": "Hôm nay là ngày 26 tháng 11."
     # }
-    interactive_transcript: List[Dict[str, str]] = Field(default=[])
+    interactive_transcript: List[Dict[str, str]] = Field(default_factory=list)
     
     # Key Vocabulary
-    key_vocabulary: List[Dict[str, str]] = Field(default=[])
+    key_vocabulary: List[Dict[str, str]] = Field(default_factory=list)
     
     time_limit_minutes: int = Field(default=15)               
     total_questions: int = Field(default=20)                  
@@ -75,7 +75,7 @@ class UserListeningSessionModel(Document):
     
     # "COMPREHENSION" hoặc "DICTATION"
     session_type: str = Field(default="COMPREHENSION", pattern="^(COMPREHENSION|DICTATION)$")
-    
+    completed_questions: int = Field(default=0)
     # --- THỐNG KÊ CHUNG (Overall Stats) ---
     accuracy_rate: float = Field(default=0.0)                 # VD: 85% hoặc 95%
     score_summary: Optional[str] = None                       # VD: "17 out of 20 Correct"
@@ -83,24 +83,30 @@ class UserListeningSessionModel(Document):
 
     # --- ĐÀNH RIÊNG CHO CÂU HỎI LÝ THUYẾT (Analytics & Competency Matrix) ---
     # Breakdown: {"Global Understanding": 100, "Specific Information": 80, "Inference & Tone": 75}
-    competency_matrix: Dict[str, float] = Field(default={})   
+    competency_matrix: Dict[str, float] = Field(default_factory=dict)
     
     # Details từng câu hỏi: [{ "q_id": "...", "your_answer": "...", "correct_answer": "...", "is_correct": true }]
-    detailed_question_review: List[Dict] = Field(default=[])
+    detailed_question_review: List[Dict] = Field(default_factory=list)
 
     # --- DÀNH RIÊNG CHO DICTATION (Chép chính tả Review) ---
     words_typed: int = Field(default=0)                       # VD: 158 words
     wpm: int = Field(default=0)                               # VD: 42 WPM
     missed_contractions: int = Field(default=0)               # VD: 2
-    
+
+    # Dữ liệu nháp cho cả comprehension và dictation
+    user_answers: Dict[str, str] = Field(default_factory=dict)
+    user_typed_text: str = Field(default="")
+    time_remaining_seconds: int = Field(default=0)
+    score: float = Field(default=0.0)
     # Mảng so sánh từ gõ đúng/sai để tô màu Xanh/Đỏ trên UI:
     # Example: [{"word": "strategy", "user_word": "stratagy", "is_correct": false}]
-    transcript_comparison: List[Dict] = Field(default=[])     
+    transcript_comparison: List[Dict] = Field(default_factory=list)
     
     spelling_tip: Optional[str] = None                        # Mẹo chính tả
     listening_insight: Optional[str] = None                   # Nhận xét AI
 
     status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
+    start_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
