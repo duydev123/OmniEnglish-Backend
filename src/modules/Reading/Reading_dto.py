@@ -2,20 +2,19 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
 # --- Các Schema phụ để ẩn đáp án đúng đi ---
-class VocabPairResponse(BaseModel):
-    term: str
-    # Cố tình KHÔNG trả về definition tương ứng ở đây để Frontend phải tự xáo trộn hoặc API xáo trộn sẵn
-
-class VocabMatchingResponse(BaseModel):
+class HeadingMatchingResponse(BaseModel):
     order: int
-    terms: List[str]
-    definitions: List[str] # Đã xáo trộn ngẫu nhiên
-
-class SentenceCompletionResponse(BaseModel):
+    headings: List[str]  # Danh sách headings đã xáo trộn
+    paragraphs: List[str]  # Nội dung các paragraph cần ghép heading
+class FillBlankResponse(BaseModel):
     order: int
-    template_text: str
+    passage_text: str  # Đoạn văn với placeholder [blank_1], [blank_2], ...
+    blanks: List[str]  # Danh sách ID các ô trống: ["blank_1", "blank_2"]
     case_sensitive: bool
-
+class TrueFalseNotGivenResponse(BaseModel):
+    order: int
+    statements: List[str]  # Danh sách các câu phát biểu
+    # KHÔNG trả về đáp án đúng
 class MultipleChoiceResponse(BaseModel):
     id: str # Lấy string ID của record
     order: int
@@ -39,9 +38,10 @@ class ReadingSessionStartResponse(BaseModel):
     time_remaining_seconds: int
     
     # 3. Phần Câu hỏi (Đã giấu đáp án)[cite: 15]
-    vocab_matchings: List[VocabMatchingResponse]
-    sentence_completions: List[SentenceCompletionResponse]
     multiple_choices: List[MultipleChoiceResponse]
+    heading_matchings: List[HeadingMatchingResponse]
+    fill_blanks: List[FillBlankResponse]
+    true_false_not_given: List[TrueFalseNotGivenResponse]  
 
 
 

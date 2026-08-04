@@ -26,27 +26,6 @@ class ReadingPassageModel(Document):
 # ==========================================
 # 2. CÁC DẠNG CÂU HỎI READING (Liên kết với Passage)
 # ==========================================
-class ReadingVocabMatchingModel(Document):
-    passage_id: Link[ReadingPassageModel]                     # Link tới bài đọc
-    order: int = Field(default=1)
-    pairs: List[Dict[str, str]] = Field(..., min_items=1)     # [{"term": "Confluence", "definition": "..."}]
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    class Settings:
-        name = "reading_vocab_matchings"
-
-
-class ReadingSentenceCompletionModel(Document):
-    passage_id: Link[ReadingPassageModel]          # Link tới bài đọc
-    order: int = Field(default=2)
-    template_text: str = Field(..., min_length=1)             # Đoạn văn chứa ô trống
-    correct_answers: Dict[str, str] = Field(...)             # Đáp án đúng cho từng ô
-    case_sensitive: bool = Field(default=False)               # Phân biệt hoa/thường
-    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    class Settings:
-        name = "reading_sentence_completions"
-
 
 class ReadingMultipleChoiceModel(Document):
     passage_id: Link[ReadingPassageModel]
@@ -58,8 +37,34 @@ class ReadingMultipleChoiceModel(Document):
 
     class Settings:
         name = "reading_multiple_choices"
+class ReadingHeadingMatchingModel(Document):
+    passage_id: Link[ReadingPassageModel]
+    order: int = Field(default=4)
+    headings: List[str] = Field(..., min_items=2)  # Danh sách các heading để chọn
+    correct_matches: Dict[str, str] = Field(...)   # {"paragraph_1": "Heading A", "paragraph_2": "Heading B"}
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    class Settings:
+        name = "reading_heading_matchings"
+class ReadingFillBlankModel(Document):
+    passage_id: Link[ReadingPassageModel]
+    order: int = Field(default=5)
+    passage_text: str = Field(..., min_length=10)  # Đoạn văn có chứa các ô trống
+    blanks: List[Dict[str, str]] = Field(..., min_items=1)  # [{"blank_id": "blank_1", "correct_answer": "..."}]
+    case_sensitive: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
+    class Settings:
+        name = "reading_fill_blanks"
+class ReadingTrueFalseNotGivenModel(Document):
+    passage_id: Link[ReadingPassageModel]
+    order: int = Field(default=6)
+    statements: List[Dict[str, str]] = Field(..., min_items=1)  
+    # Mỗi statement: {"statement": "...", "correct_answer": "TRUE"/"FALSE"/"NOT GIVEN"}
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "reading_true_false_not_given"
 # ==========================================
 # 3. BẢNG LƯU LƯỢT LÀM BÀI READING CỦA USER
 # ==========================================
