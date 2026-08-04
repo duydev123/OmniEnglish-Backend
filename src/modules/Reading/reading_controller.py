@@ -1,301 +1,95 @@
-import random
-from datetime import datetime, UTC
 from fastapi import APIRouter, HTTPException
-from typing import Dict, List
-from beanie import PydanticObjectId
-
-from models.Reading import (
-    ReadingPassageModel,
-    ReadingMultipleChoiceModel,
-    ReadingHeadingMatchingModel, 
-    ReadingFillBlankModel,
-    ReadingTrueFalseNotGivenModel,
-    UserReadingSessionModel
-)
+from typing import Dict
+from .reading_service import ReadingService
 from .Reading_dto import (
     ReadingSessionStartResponse,
-    MultipleChoiceResponse,
-    HeadingMatchingResponse,
-    FillBlankResponse,
-    TrueFalseNotGivenResponse,
     ReadingDraftRequest,
     ReadingSubmitRequest,
-    ReadingSubmitResponse,
-    QuestionResult
+    ReadingSubmitResponse
 )
 
 router = APIRouter()
+reading_service = ReadingService()
+
 
 @router.get(path="/passages/{passage_id}/start", response_model=ReadingSessionStartResponse)
 async def start_reading_session(passage_id: str):
-    # 1. Lấy passage
-    passage = await ReadingPassageModel.get(passage_id)
-    if not passage:
-        raise HTTPException(status_code=404, detail="Passage not found")
-    
-    # 2. Tạo session mới (giả định user_id từ auth)
-    # session = UserReadingSessionModel(
-    #     user_id=user_id,
-    #     passage_id=passage,
-    #     total_questions=passage.total_questions
-    # )
-    # await session.insert()
-    # Tạm thời dùng user_id cố định, sau này lấy từ token
-    user_id = "test_user_001"
-    existing_session = await UserReadingSessionModel.find_one(
-        UserReadingSessionModel.user_id == user_id,
-        UserReadingSessionModel.passage_id.id == PydanticObjectId(passage_id),
-        UserReadingSessionModel.status == "IN_PROGRESS"
-    )
-    
-    if existing_session:
-        # Nếu có session đang làm dở, trả về session đó
-        session = existing_session
-    else:
-        # Tạo session mới
-        session = UserReadingSessionModel(
-            user_id=user_id,
-            passage_id=passage,
+    """Bắt đầu session làm bài Reading"""
+    try:
+        # 1. Lấy passage
+        passage = await reading_service.get_passage(passage_id)
+        
+        # 2. Tạo hoặc lấy session (tạm thời dùng user_id cố định)
+        user_id = "test_user_001"
+        session = await reading_service.get_or_create_session(user_id, passage_id)
+        
+        # 3. Format các loại câu hỏi
+        multiple_choices = await reading_service.format_multiple_choices(passage_id)
+        heading_matchings = await reading_service.format_heading_matchings(passage, passage_id)
+        fill_blanks = await reading_service.format_fill_blanks(passage_id)
+        true_false_not_given = await reading_service.format_true_false_not_given(passage_id)
+        
+        # 4. Trả về response
+        return ReadingSessionStartResponse(
+            session_id=str(session.id),
+            title=passage.title,
+            content=passage.content,
+            image_url=passage.image_url,
+            learning_tip=passage.learning_tip,
+            completed_questions=session.completed_questions,
             total_questions=passage.total_questions,
-            time_remaining_seconds=passage.time_limit_minutes * 60,
-            attempt_number=1,
-            status="IN_PROGRESS"
+            time_remaining_seconds=session.time_remaining_seconds,
+            multiple_choices=multiple_choices,
+            heading_matchings=heading_matchings,
+            fill_blanks=fill_blanks,
+            true_false_not_given=true_false_not_given
         )
-        await session.insert()
-    # 3. Lấy các câu hỏi
-    multiple_choices = await ReadingMultipleChoiceModel.find(
-        ReadingMultipleChoiceModel.passage_id.id == PydanticObjectId(passage_id)
-    ).to_list()
+    
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
-    heading_matchings = await ReadingHeadingMatchingModel.find(
-        ReadingHeadingMatchingModel.passage_id.id == PydanticObjectId(passage_id)
-    ).to_list()
-    
-    fill_blanks = await ReadingFillBlankModel.find(
-        ReadingFillBlankModel.passage_id.id == PydanticObjectId(passage_id)
-    ).to_list()
-    true_false_not_given = await ReadingTrueFalseNotGivenModel.find(
-        ReadingTrueFalseNotGivenModel.passage_id.id == passage.id
-    ).to_list()
-    
-    # Format heading matchings - Lấy headings và paragraphs
-    heading_responses = []
-    for h in heading_matchings:
-        # Lấy nội dung các paragraph từ passage (cần có logic tách paragraph)
-        # Giả sử passage.content được chia thành các paragraph bằng \n\n
-        paragraphs = [p.strip() for p in passage.content.split('\n\n') if p.strip()]
-        # Chỉ lấy số paragraph tương ứng với số heading cần match
-        # (thực tế nên lấy từ cấu trúc dữ liệu, ở đây demo)
-        num_paragraphs = len(h.correct_matches)
-        selected_paragraphs = paragraphs[:num_paragraphs] if len(paragraphs) >= num_paragraphs else paragraphs
-        
-        # Xáo trộn headings
-        shuffled_headings = h.headings.copy()
-        random.shuffle(shuffled_headings)
-        
-        heading_responses.append(HeadingMatchingResponse(
-            order=h.order,
-            headings=shuffled_headings,
-            paragraphs=selected_paragraphs
-        )) 
-    # Format fill blanks
-    fill_blank_responses = []
-    for fb in fill_blanks:
-        # Tạo placeholder cho blanks trong passage_text
-        passage_text_with_placeholder = fb.passage_text
-        blank_ids = []
-        for blank in fb.blanks:
-            blank_id = blank["blank_id"]
-            blank_ids.append(blank_id)
-            # Thay thế [blank_id] bằng [___] để hiển thị
-            passage_text_with_placeholder = passage_text_with_placeholder.replace(
-                f"[{blank_id}]", "[________]"
-            )
-        
-        fill_blank_responses.append(FillBlankResponse(
-            order=fb.order,
-            passage_text=passage_text_with_placeholder,
-            blanks=blank_ids,
-            case_sensitive=fb.case_sensitive
-        ))
-    tfng_responses = []
-    for tf in true_false_not_given:
-        statements = [item["statement"] for item in tf.statements]
-        # Có thể xáo trộn thứ tự statements nếu muốn
-        # random.shuffle(statements)
-        
-        tfng_responses.append(TrueFalseNotGivenResponse(
-            order=tf.order,
-            statements=statements
-        ))
-    # 5. Trả về response
-    return ReadingSessionStartResponse(
-        session_id=str(session.id),  # Tạm thời dùng passage_id làm session_id
-        title=passage.title,
-        content=passage.content,
-        image_url=passage.image_url,
-        learning_tip=passage.learning_tip,
-        completed_questions=0,
-        total_questions=passage.total_questions,
-        time_remaining_seconds=passage.time_limit_minutes * 60,
-        multiple_choices=[
-            MultipleChoiceResponse(
-                id=str(m.id),
-                order=m.order,
-                question_text=m.question_text,
-                options=m.options
-            ) for m in multiple_choices
-        ],
-        heading_matchings=heading_responses, 
-        fill_blanks=fill_blank_responses , 
-        true_false_not_given=tfng_responses
-    )
 
 @router.patch(path="/sessions/{session_id}/draft")
 async def save_reading_draft(session_id: str, payload: ReadingDraftRequest):
     """Lưu nháp bài đọc khi user đang làm dở"""
-     # Lấy session từ database
-    session = await UserReadingSessionModel.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Cập nhật session
-    session.time_remaining_seconds = payload.time_remaining_seconds
-    session.user_answers = payload.user_answers
-    
-    # Tính số câu đã làm
-    completed = len(payload.user_answers)
-    session.completed_questions = min(completed, session.total_questions)
-    
-    session.updated_at = datetime.now(UTC)
-    await session.save()
-    
-    return {
-        "success": True,
-        "message": "Draft saved successfully",
-        "session_id": session_id,
-        "completed_questions": session.completed_questions,
-        "total_questions": session.total_questions
-    }
-
-@router.post(path="/sessions/{session_id}/submit")
-async def submit_reading_answers(session_id: str, payload: dict):
-    """Chấm điểm bài đọc và trả về kết quả"""
-    # Lấy session
-    session = await UserReadingSessionModel.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
-    user_answers = payload.get("user_answers", {})  # ← Lấy từ dict
-    time_remaining = payload.get("time_remaining_seconds", 0)
-    # Lấy passage và các câu hỏi
-    passage = await session.passage_id.fetch()
-    
-    # Lấy tất cả câu hỏi
-    multiple_choices = await ReadingMultipleChoiceModel.find(
-        ReadingMultipleChoiceModel.passage_id.id == passage.id
-    ).to_list()
-    
-    heading_matchings = await ReadingHeadingMatchingModel.find(
-        ReadingHeadingMatchingModel.passage_id.id == passage.id
-    ).to_list()
-    
-    fill_blanks = await ReadingFillBlankModel.find(
-        ReadingFillBlankModel.passage_id.id == passage.id
-    ).to_list()
-    true_false_not_given = await ReadingTrueFalseNotGivenModel.find(
-        ReadingTrueFalseNotGivenModel.passage_id.id == passage.id
-    ).to_list()
-    # Khởi tạo kết quả
-    detailed_results = {}
-    score = 0
-    total_questions = 0
-    
-    # 1. Chấm Multiple Choice
-    for mc in multiple_choices:
-        total_questions += 1
-        question_id = str(mc.id)
-        user_answer = user_answers.get(question_id, "")
-        is_correct = user_answer == mc.correct_answer
-        if is_correct:
-            score += 1
-        detailed_results[question_id] = QuestionResult(
-            is_correct=is_correct,
-            user_answer=user_answer,
-            correct_answer=mc.correct_answer
+    try:
+        result = await reading_service.save_draft(
+            session_id=session_id,
+            time_remaining_seconds=payload.time_remaining_seconds,
+            user_answers=payload.user_answers
         )
-    
-    # 3. Chấm Heading Matching
-    for hm in heading_matchings:
-        total_questions += len(hm.correct_matches)
-        for paragraph_id, correct_heading in hm.correct_matches.items():
-            user_answer = user_answers.get(paragraph_id, "")
-            is_correct = user_answer == correct_heading
-            if is_correct:
-                score += 1
-            detailed_results[paragraph_id] = QuestionResult(
-                is_correct=is_correct,
-                user_answer=user_answer,
-                correct_answer=correct_heading
-            )
-    
-    # 4. Chấm Fill-in-the-blank
-    for fb in fill_blanks:
-        total_questions += len(fb.blanks)
-        for blank in fb.blanks:
-            blank_id = blank["blank_id"]
-            correct_answer = blank["correct_answer"]
-            user_answer = user_answers.get(blank_id, "")
-            
-            if fb.case_sensitive:
-                is_correct = user_answer == correct_answer
-            else:
-                is_correct = user_answer.lower().strip() == correct_answer.lower().strip()
-            
-            if is_correct:
-                score += 1
-            
-            detailed_results[blank_id] = QuestionResult(
-                is_correct=is_correct,
-                user_answer=user_answer,
-                correct_answer=correct_answer
-            )
-    for tf in true_false_not_given:
-        for item in tf.statements:
-            total_questions += 1
-            statement_id = f"tf_{tf.order}_{tf.statements.index(item)}"  # Tạo ID duy nhất
-            # Hoặc dùng index: statement_id = f"statement_{tf.statements.index(item)}"
-            
-            correct_answer = item["correct_answer"].upper()  # TRUE/FALSE/NOT GIVEN
-            user_answer = user_answers.get(statement_id, "").upper()
-            
-            is_correct = user_answer == correct_answer
-            if is_correct:
-                score += 1
-            
-            detailed_results[statement_id] = {
-                "is_correct": is_correct,
-                "user_answer": user_answer,
-                "correct_answer": correct_answer,
-                "statement": item["statement"]  # Thêm để frontend biết câu nào
-            }
-    
-    # Cập nhật session
-    session.score = score
-    session.status = "COMPLETED"
-    session.user_answers = user_answers
-    session.completed_questions = total_questions
-    session.time_remaining_seconds = time_remaining
-    session.updated_at = datetime.now(UTC)
-    await session.save()
-    
-    # Tính accuracy
-    accuracy_rate = (score / total_questions) * 100 if total_questions > 0 else 0
-    
-    return ReadingSubmitResponse(
-        status="COMPLETED",
-        score=score,
-        total_questions=total_questions,
-        accuracy_rate=round(accuracy_rate, 2),
-        detailed_results=detailed_results
-    )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/sessions/{session_id}/draft")
+async def get_reading_draft(session_id: str):
+    """Lấy nháp bài đọc đã lưu"""
+    try:
+        result = await reading_service.get_draft(session_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post(path="/sessions/{session_id}/submit", response_model=ReadingSubmitResponse)
+async def submit_reading_answers(session_id: str, payload: ReadingSubmitRequest):
+    """Chấm điểm bài đọc và trả về kết quả"""
+    try:
+        result = await reading_service.submit_answers(
+            session_id=session_id,
+            user_answers=payload.user_answers,
+            time_remaining=payload.time_remaining_seconds
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
