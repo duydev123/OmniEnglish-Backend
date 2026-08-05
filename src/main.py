@@ -35,7 +35,12 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
-
+from models.Listening import (
+    ListeningPassageModel,
+    ListeningMultipleChoiceModel,
+    ListeningCompletionModel,
+    UserListeningSessionModel
+)
 
 
 @asynccontextmanager
@@ -45,12 +50,19 @@ async def lifespan(app: FastAPI):
 
     await init_beanie(
         database=client.get_database("omni_english_db"),
-        document_models=[ UserModel, ReadingPassageModel,
+        document_models=[
+            UserModel,
+            ReadingPassageModel,
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,
             ReadingFillBlankModel,
             ReadingTrueFalseNotGivenModel,
-            UserReadingSessionModel,],
+            UserReadingSessionModel,
+            ListeningPassageModel,
+            ListeningMultipleChoiceModel,
+            ListeningCompletionModel,
+            UserListeningSessionModel,
+        ],
     )
     yield
     client.close()
