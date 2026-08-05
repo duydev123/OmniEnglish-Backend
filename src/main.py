@@ -26,6 +26,8 @@ from modules.Speaking import speaking_controller
 from modules.Vocabulary import vocab_controller
 from modules.Auth import auth_controller
 from modules.Seed import seed_controller
+from models.VocabularyCollectionModel import UserProgressModel, UserWordStatusModel, VocabularyCollectionModel
+from models.Paragraph import WordModel
 
 from models.Reading import (
     ReadingPassageModel,
@@ -35,12 +37,7 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
-from models.Listening import (
-    ListeningPassageModel,
-    ListeningMultipleChoiceModel,
-    ListeningCompletionModel,
-    UserListeningSessionModel
-)
+
 
 
 @asynccontextmanager
@@ -50,19 +47,17 @@ async def lifespan(app: FastAPI):
 
     await init_beanie(
         database=client.get_database("omni_english_db"),
-        document_models=[
-            UserModel,
-            ReadingPassageModel,
+        document_models=[  UserModel, ReadingPassageModel,
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,
             ReadingFillBlankModel,
-            ReadingTrueFalseNotGivenModel,
             UserReadingSessionModel,
-            ListeningPassageModel,
-            ListeningMultipleChoiceModel,
-            ListeningCompletionModel,
-            UserListeningSessionModel,
-        ],
+            ReadingTrueFalseNotGivenModel,
+            VocabularyCollectionModel,
+            WordModel,
+            UserWordStatusModel,
+            UserProgressModel
+        ]
     )
     yield
     client.close()
