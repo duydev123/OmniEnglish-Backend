@@ -29,10 +29,19 @@ from .Vocabulary_dto import (
     BulkAddWordsRequest,
     BulkUpdateWordsRequest
 )
-from models.Paragraph import WordModel
+from models.Paragraph import WordModel, WordType
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def normalize_word_type(val: Optional[str]) -> str:
+    if not val:
+        return WordType.NOUN.value
+    v = val.lower().strip()
+    valid_map = {e.value: e.value for e in WordType}
+    return valid_map.get(v, WordType.NOUN.value)
+
 
 # =====================================================================
 # AUTHENTICATION HELPER
@@ -216,10 +225,7 @@ async def add_word_to_collection(collection_id: str, payload: AddWordRequest):
                 detail="Collection not found or you do not have permission to edit it"
             )
 
-        word_type_val = (payload.word_type or "unknown").lower()
-        valid_types = ["noun", "verb", "adjective", "adverb", "phrasal verb", "idiom", "pronoun", "preposition", "conjunction", "interjection"]
-        if word_type_val not in valid_types:
-            word_type_val = "noun"
+        word_type_val = normalize_word_type(payload.word_type)
             
         new_word = WordModel(
             word=payload.word,
@@ -255,7 +261,7 @@ async def update_single_word(word_id: str, payload: UpdateWordRequest):
         if payload.word is not None:
             word.word = payload.word
         if payload.word_type is not None:
-            word.word_type = payload.word_type.lower()
+            word.word_type = normalize_word_type(payload.word_type)
         if payload.meaning is not None:
             word.meaning = payload.meaning
         if payload.ipa is not None:
@@ -307,7 +313,7 @@ async def bulk_update_words_in_collection(collection_id: str, payload: BulkUpdat
                 if item.word is not None:
                     word_obj.word = item.word
                 if item.word_type is not None:
-                    word_obj.word_type = item.word_type.lower()
+                    word_obj.word_type = normalize_word_type(item.word_type)
                 if item.meaning is not None:
                     word_obj.meaning = item.meaning
                 if item.ipa is not None:
@@ -346,7 +352,7 @@ async def bulk_add_words_to_collection(collection_id: str, payload: BulkAddWords
         new_words_objects = []
         
         for w in payload.words:
-            word_type_val = w.word_type.lower() if w.word_type and w.word_type != "Select..." else "noun"
+            word_type_val = normalize_word_type(w.word_type)
             
             new_word = WordModel(
                 word=w.word,
@@ -488,10 +494,7 @@ async def process_and_add_pasted_text_with_gemini(collection_id: str, payload: P
                 added_words.add(word_val)
                 continue
             
-            word_type_val = (item.get("word_type") or "noun").lower()
-            valid_types = ["noun", "verb", "adjective", "adverb", "phrasal verb", "idiom", "pronoun", "preposition", "conjunction"]
-            if word_type_val not in valid_types:
-                word_type_val = "noun"
+            word_type_val = normalize_word_type(item.get("word_type"))
             
             cefr_val = (item.get("cefr_level") or "B1").upper()
             valid_cefr = ["A1", "A2", "B1", "B2", "C1", "C2"]
