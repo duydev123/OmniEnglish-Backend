@@ -11,6 +11,8 @@ class WordType(str, Enum):
     VERB = "verb"
     ADJECTIVE = "adjective"
     ADVERB = "adverb"
+    PHRASAL_VERB = "phrasal verb"
+    IDIOM = "idiom"
     PRONOUN = "pronoun"
     PREPOSITION = "preposition"
     CONJUNCTION = "conjunction"
@@ -24,6 +26,10 @@ class WordModel(Document):
     ipa: Optional[str] = None               
     example_sentence: Optional[str] = None     
     image_url: Optional[str] = None
+    cefr_level: Optional[str] = None
+    topic: Optional[str] = None
+    user_id: Optional[str] = None
+
     class Settings:
         name = "words"
 
