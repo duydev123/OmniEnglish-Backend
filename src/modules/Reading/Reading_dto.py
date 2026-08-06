@@ -74,7 +74,6 @@ class QuestionResult(BaseModel):
     is_correct: bool
     user_answer: str
     correct_answer: str
-    statement: Optional[str] = Field(default=None, description="Nội dung câu hỏi (cho True/False/Not Given)")
 
 # --- Schema Trả Về (Response) ---
 class ReadingSubmitResponse(BaseModel):

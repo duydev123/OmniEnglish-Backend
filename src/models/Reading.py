@@ -79,7 +79,7 @@ class UserReadingSessionModel(Document):
     time_remaining_seconds: int = Field(default=0)            # VD: 765s (12:45)
     
     # Đáp án User đã chọn/điền (dạng JSON lưu vết)
-    user_answers: Dict[str, str] = Field(default_factory=dict)
+    user_answers: Dict = Field(default={})                    
     
     score: int = Field(default=0)                              # Số câu đúng
     status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
