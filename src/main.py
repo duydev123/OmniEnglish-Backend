@@ -39,9 +39,9 @@ from models.Listening import (
     ListeningPassageModel,
     ListeningMultipleChoiceModel,
     ListeningCompletionModel,
-    UserListeningSessionModel
+    UserListeningSessionModel,
+    UserDictationSessionModel  # Thêm model mới dành riêng cho Dictation
 )
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -62,6 +62,7 @@ async def lifespan(app: FastAPI):
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
+            UserDictationSessionModel
         ],
     )
     yield

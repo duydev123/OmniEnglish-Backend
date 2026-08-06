@@ -162,11 +162,132 @@ class ListeningUtil:
         session = await ListeningUtil._get_comprehension_session(session_id)
         if not session: raise ValueError("Session not found")
         
-        # (Giữ nguyên logic chấm điểm Comprehension dài ngoằng của ông ở file cũ...)
-        # Vì code cũ chỗ này rất dài và chạy đang ổn định, tui rút gọn đại diện ở đây để ông copy từ file cũ sang cho an toàn nhé.
-        # Ông bê nguyên nội dung hàm grade_comprehension cũ bỏ vào đây!
-        pass # TODO: Paste the old grade_comprehension logic here
+        passage = await session.passage_id.fetch()
+        passage_id = passage.id
+        
+        multiple_choices = await ListeningMultipleChoiceModel.find(
+            ListeningMultipleChoiceModel.passage_id.id == PydanticObjectId(passage_id)
+        ).to_list()
+        
+        completions = await ListeningCompletionModel.find(
+            ListeningCompletionModel.passage_id.id == PydanticObjectId(passage_id)
+        ).to_list()
+        
+        detailed_review = []
+        competency_matrix = {
+            "Global Understanding": 0,
+            "Specific Information Retrieval": 0,
+            "Inference & Tone": 0,
+            "Vocabulary": 0
+        }
+        competency_counts = {k: 0 for k in competency_matrix.keys()}
+        
+        correct_count = 0
+        total_questions = len(multiple_choices) + sum(len(c.correct_answers) for c in completions)
+        
+        user_answers_dict = {str(ans.question_id): ans.answer for ans in user_answers}
+        graded_user_answers = []
+        
+        # 1. Chấm Multiple Choice
+        for mc in multiple_choices:
+            question_id = str(mc.id)
+            user_answer_val = user_answers_dict.get(question_id, "")
+            is_correct = user_answer_val == mc.correct_answer
+            
+            if is_correct: correct_count += 1
+            
+            comp_type = mc.competency_type or "Global Understanding"
+            if comp_type in competency_counts:
+                competency_counts[comp_type] += 1
+                if is_correct: competency_matrix[comp_type] += 1
+                
+            graded_user_answers.append(UserAnswer(
+                question_id=PydanticObjectId(question_id),
+                question_type="MULTIPLE_CHOICE",
+                answer=user_answer_val,
+                is_correct=is_correct
+            ))
+            
+            detailed_review.append(QuestionReviewDetail(
+                question_text=mc.question_text,
+                your_answer=user_answer_val or "Not answered",
+                correct_answer=mc.correct_answer,
+                is_correct=is_correct,
+                timestamp_clip=mc.timestamp_clip,
+                learning_hint=mc.learning_hint or ListeningUtil._get_default_hint(is_correct)
+            ))
 
+        # 2. Chấm Completion
+        for comp in completions:
+            question_id = str(comp.id)
+            user_answer_val = user_answers_dict.get(question_id, {})
+            if not isinstance(user_answer_val, dict): user_answer_val = {}
+            
+            is_comp_fully_correct = True
+            for gap_id, correct_answer in comp.correct_answers.items():
+                user_gap_answer = user_answer_val.get(gap_id, "")
+                if comp.case_sensitive:
+                    is_correct = user_gap_answer == correct_answer
+                else:
+                    is_correct = user_gap_answer.lower().strip() == correct_answer.lower().strip()
+                    
+                if is_correct: correct_count += 1
+                else: is_comp_fully_correct = False
+                
+                comp_type = "Specific Information Retrieval"
+                if comp_type in competency_counts:
+                    competency_counts[comp_type] += 1
+                    if is_correct: competency_matrix[comp_type] += 1
+                    
+                detailed_review.append(QuestionReviewDetail(
+                    question_text=f"Fill in the blank: {comp.template_text.replace(f'[{gap_id}]', '_____')}",
+                    your_answer=user_gap_answer or "Not answered",
+                    correct_answer=correct_answer,
+                    is_correct=is_correct,
+                    timestamp_clip=None,
+                    learning_hint="Review the audio segment to find the missing word."
+                ))
+                
+            graded_user_answers.append(UserAnswer(
+                question_id=PydanticObjectId(question_id),
+                question_type="COMPLETION",
+                answer=user_answer_val,
+                is_correct=is_comp_fully_correct
+            ))
+
+        for comp_type in competency_matrix:
+            if competency_counts[comp_type] > 0:
+                competency_matrix[comp_type] = round((competency_matrix[comp_type] / competency_counts[comp_type]) * 100, 2)
+                
+        accuracy_rate = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+        xp_earned = ListeningUtil._calculate_xp(accuracy_rate, total_questions)
+        score_summary = f"{correct_count} out of {total_questions} Correct"
+        
+        session.user_answers = graded_user_answers
+        session.time_remaining_seconds = 0
+        session.status = "COMPLETED"
+        session.submitted_at = datetime.now(UTC)
+        session.updated_at = datetime.now(UTC)
+        
+        session.result = ListeningResult(
+            score=correct_count,
+            accuracy_rate=round(accuracy_rate, 2),
+            xp_earned=xp_earned,
+            competency_matrix=competency_matrix,
+            detailed_question_review=[d.dict() for d in detailed_review]
+        )
+        await session.save()
+        
+        return ListeningSubmitResponse(
+            session_id=session_id,
+            session_type="COMPREHENSION",
+            status="COMPLETED",
+            accuracy_rate=round(accuracy_rate, 2),
+            score_summary=score_summary,
+            xp_earned=xp_earned,
+            competency_matrix=competency_matrix,
+            detailed_question_review=detailed_review
+        )
 
     # ==========================================
     # 3. XỬ LÝ DICTATION (CHÉP CHÍNH TẢ)
@@ -270,7 +391,14 @@ class ListeningUtil:
         session.updated_at = datetime.now(UTC)
         await session.save()
         
-        return history_record.dict()
+        session.sentence_histories[str(transcript_index)] = history_record
+        session.updated_at = datetime.now(UTC)
+        await session.save()
+        
+        # SỬA ĐOẠN RETURN NÀY:
+        response_data = history_record.dict()
+        response_data["words_typed"] = len(user_words) # Thêm field frontend đang đòi
+        return response_data
 
     @staticmethod
     async def submit_dictation_session(session_id: str) -> Dict:
@@ -310,256 +438,7 @@ class ListeningUtil:
     @staticmethod
     def _calculate_xp(accuracy_rate: float, total_questions: int) -> int:
         base_xp = total_questions * 10
-        bonus_xp = 0# modules/Listening/listening_service.py
-from datetime import datetime
-from typing import Dict, List
-
-from .listening_util import ListeningUtil
-from models.Listening import (
-    ListeningPassageModel,
-    UserListeningSessionModel,
-    UserDictationSessionModel
-)
-from .listening_dto import (
-    # Passages & History
-    ListeningPassageSummaryResponse,
-    ListeningHistoryItemResponse,
-    
-    # Comprehension
-    ComprehensionSessionStartResponse,
-    ListeningDraftRequest,
-    ListeningDraftResponse,
-    ListeningSubmitResponse,
-    
-    # Dictation
-    DictationSessionStartResponse
-)
-
-class ListeningService:
-
-    # ==========================================
-    # 1. NHÓM QUẢN LÝ BÀI HỌC (PASSAGES) & LỊCH SỬ
-    # ==========================================
-    @staticmethod
-    async def get_all_passages(page: int, limit: int) -> List[ListeningPassageSummaryResponse]:
-        """Lấy danh sách các bài Listening có phân trang"""
-        skip = (page - 1) * limit
-        passages = await ListeningPassageModel.find_all().skip(skip).limit(limit).to_list()
-        
-        result = []
-        for p in passages:
-            result.append(ListeningPassageSummaryResponse(
-                id=str(p.id),
-                title=p.title,
-                unit_code=p.unit_code,
-                time_limit_minutes=p.time_limit_minutes,
-                total_questions=p.total_questions
-            ))
-        return result
-
-    @staticmethod
-    async def get_passage_detail(passage_id: str, user_id: str) -> Dict:
-        """Lấy chi tiết 1 passage và lịch sử làm bài tốt nhất của user (nếu có)"""
-        passage = await ListeningUtil.get_passage(passage_id)
-        
-        # Có thể thêm logic query điểm cao nhất của user ở đây
-        # Tạm thời trả về thông tin chi tiết của Passage
-        return {
-            "id": str(passage.id),
-            "title": passage.title,
-            "unit_code": passage.unit_code,
-            "audio_url": passage.audio_url,
-            "time_limit_minutes": passage.time_limit_minutes,
-            "total_questions": passage.total_questions,
-            "total_transcript_sentences": len(passage.interactive_transcript)
-        }
-
-    @staticmethod
-    async def get_user_history(user_id: str, page: int, limit: int) -> List[ListeningHistoryItemResponse]:
-        """Lấy lịch sử các bài đã làm (Cả Comprehension và Dictation), có phân trang"""
-        # Lấy lịch sử Comprehension
-        comp_sessions = await UserListeningSessionModel.find(
-            UserListeningSessionModel.user_id == user_id,
-            # UserListeningSessionModel.status == "COMPLETED"
-        ).to_list()
-        
-        # Lấy lịch sử Dictation
-        dict_sessions = await UserDictationSessionModel.find(
-            UserDictationSessionModel.user_id == user_id,
-            # UserDictationSessionModel.status == "COMPLETED"
-        ).to_list()
-        
-        history = []
-        
-        for session in comp_sessions:
-            passage = await session.passage_id.fetch()
-            accuracy = session.result.accuracy_rate if session.result else 0.0
-            history.append(ListeningHistoryItemResponse(
-                session_id=str(session.id),
-                passage_id=str(passage.id),
-                passage_title=passage.title,
-                session_type=session.session_type,
-                status=session.status,
-                accuracy_rate=accuracy,
-                submitted_at=session.submitted_at
-            ))
-            
-        for session in dict_sessions:
-            passage = await session.passage_id.fetch()
-            history.append(ListeningHistoryItemResponse(
-                session_id=str(session.id),
-                passage_id=str(passage.id),
-                passage_title=passage.title,
-                session_type="DICTATION",
-                status=session.status,
-                accuracy_rate=session.total_accuracy_rate,
-                submitted_at=session.submitted_at
-            ))
-            
-        # Sắp xếp mới nhất lên đầu
-        history.sort(key=lambda x: x.submitted_at if x.submitted_at else datetime.min, reverse=True)
-        
-        # Cắt mảng theo page & limit
-        start_idx = (page - 1) * limit
-        end_idx = start_idx + limit
-        return history[start_idx:end_idx]
-
-
-    # ==========================================
-    # 2. XỬ LÝ COMPREHENSION (NGHE HIỂU)
-    # ==========================================
-    @staticmethod
-    async def start_comprehension_session(user_id: str, passage_id: str) -> ComprehensionSessionStartResponse:
-        passage = await ListeningUtil.get_passage(passage_id)
-        session = await ListeningUtil.get_or_create_comprehension_session(user_id, passage_id)
-        
-        multiple_choices = await ListeningUtil.format_multiple_choices(passage_id)
-        completions = await ListeningUtil.format_completions(passage_id)
-        completed_questions = len(session.user_answers) if session.user_answers else 0
-        
-        return ComprehensionSessionStartResponse(
-            session_id=str(session.id),
-            passage_id=passage_id,
-            session_type="COMPREHENSION",
-            title=passage.title,
-            unit_code=passage.unit_code,
-            audio_url=passage.audio_url,
-            time_limit_minutes=passage.time_limit_minutes,
-            completed_questions=completed_questions,
-            total_questions=passage.total_questions,
-            multiple_choices=multiple_choices,
-            completions=completions
-        )
-
-    @staticmethod
-    async def get_comprehension_draft(session_id: str) -> Dict:
-        return await ListeningUtil.get_comprehension_draft(session_id)
-
-    @staticmethod
-    async def save_comprehension_draft(session_id: str, payload: ListeningDraftRequest) -> ListeningDraftResponse:
-        result = await ListeningUtil.save_comprehension_draft(
-            session_id=session_id,
-            user_answers=payload.user_answers,
-            time_remaining_seconds=payload.time_remaining_seconds
-        )
-        return ListeningDraftResponse(
-            session_id=session_id,
-            status="IN_PROGRESS",
-            message=result.get("message", "Draft saved successfully")
-        )
-
-    @staticmethod
-    async def submit_comprehension_answers(session_id: str, payload: ListeningDraftRequest) -> ListeningSubmitResponse:
-        return await ListeningUtil.grade_comprehension(
-            session_id=session_id,
-            user_answers=payload.user_answers
-        )
-
-    @staticmethod
-    async def get_comprehension_session_result(session_id: str) -> Dict:
-        session = await ListeningUtil._get_comprehension_session(session_id)
-        if not session: raise ValueError("Comprehension Session not found")
-        passage = await session.passage_id.fetch()
-        result_data = session.result
-        
-        return {
-            "success": True,
-            "session_id": str(session.id),
-            "user_id": session.user_id,
-            "passage_id": str(passage.id),
-            "passage_title": passage.title,
-            "session_type": session.session_type,
-            "status": session.status,
-            "user_answers": [ans.dict() for ans in session.user_answers] if session.user_answers else [],
-            "score": result_data.score if result_data else 0,
-            "accuracy_rate": result_data.accuracy_rate if result_data else 0,
-            "xp_earned": result_data.xp_earned if result_data else 0,
-            "competency_matrix": result_data.competency_matrix if result_data else {},
-            "detailed_question_review": [q.dict() for q in result_data.detailed_question_review] if result_data and hasattr(result_data, 'detailed_question_review') else [],
-            "started_at": session.started_at,
-            "submitted_at": session.submitted_at
-        }
-
-
-    # ==========================================
-    # 3. XỬ LÝ DICTATION (CHÉP CHÍNH TẢ)
-    # ==========================================
-    @staticmethod
-    async def start_dictation_session(user_id: str, passage_id: str) -> DictationSessionStartResponse:
-        passage = await ListeningUtil.get_passage(passage_id)
-        session = await ListeningUtil.get_or_create_dictation_session(user_id, passage_id)
-        
-        transcript = await ListeningUtil.format_transcript(passage)
-        vocabulary = await ListeningUtil.format_vocabulary(passage)
-        
-        return DictationSessionStartResponse(
-            session_id=str(session.id),
-            passage_id=passage_id,
-            session_type="DICTATION",
-            title=passage.title,
-            audio_url=passage.audio_url,
-            time_limit_minutes=passage.time_limit_minutes,
-            interactive_transcript=transcript,
-            key_vocabulary=vocabulary,
-            total_questions=len(transcript) # Số câu dictation bằng số câu transcript
-        )
-
-    @staticmethod
-    async def get_dictation_draft(session_id: str) -> Dict:
-        return await ListeningUtil.get_dictation_draft(session_id)
-
-    @staticmethod
-    async def grade_and_save_dictation_sentence(session_id: str, transcript_index: int, user_typed_text: str) -> Dict:
-        return await ListeningUtil.grade_and_save_dictation_sentence(
-            session_id=session_id,
-            transcript_index=transcript_index,
-            user_typed_text=user_typed_text
-        )
-
-    @staticmethod
-    async def submit_dictation_session(session_id: str) -> Dict:
-        return await ListeningUtil.submit_dictation_session(session_id)
-
-    @staticmethod
-    async def get_dictation_session_result(session_id: str) -> Dict:
-        session = await ListeningUtil._get_dictation_session(session_id)
-        if not session: raise ValueError("Dictation Session not found")
-        passage = await session.passage_id.fetch()
-        
-        return {
-            "success": True,
-            "session_id": str(session.id),
-            "user_id": session.user_id,
-            "passage_id": str(passage.id),
-            "passage_title": passage.title,
-            "session_type": "DICTATION",
-            "status": session.status,
-            "total_accuracy_rate": session.total_accuracy_rate,
-            "total_words_typed": session.total_words_typed,
-            "sentence_histories": session.sentence_histories,
-            "started_at": session.started_at,
-            "submitted_at": session.submitted_at
-        }
+        bonus_xp = 0
         if accuracy_rate >= 90:
             bonus_xp = base_xp * 0.5 
         elif accuracy_rate >= 70:

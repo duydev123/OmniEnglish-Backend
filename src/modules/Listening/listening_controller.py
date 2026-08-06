@@ -1,152 +1,177 @@
 # modules/Listening/listening_controller.py
+from fastapi import APIRouter, Query, HTTPException
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
 from .listening_service import ListeningService
 from .listening_dto import (
-    ListeningSessionStartResponse,
+    # Passages & History
+    ListeningPassageSummaryResponse,
+    ListeningHistoryItemResponse,
+    
+    # Comprehension
+    ComprehensionSessionStartResponse,
     ListeningDraftRequest,
     ListeningDraftResponse,
-    ListeningSubmitResponse
+    ListeningSubmitResponse,
+    
+    # Dictation
+    DictationSessionStartResponse,
+    DictationSentenceGradeRequest,
+    DictationSentenceGradeResponse
 )
 
 router = APIRouter()
-listening_service = ListeningService()
 
+# ==========================================
+# 1. NHÓM QUẢN LÝ BÀI HỌC (PASSAGES) & LỊCH SỬ
+# ==========================================
 
-@router.get(path="/passages/{passage_id}/start", response_model=ListeningSessionStartResponse)
-async def start_listening_session(passage_id: str):
-    """Lấy file audio, transcript song ngữ, từ vựng và danh sách câu hỏi"""
+@router.get(path="/passages", response_model=List[ListeningPassageSummaryResponse])
+async def get_available_passages(
+    page: int = Query(1, ge=1, description="Số trang hiện tại"),
+    limit: int = Query(10, ge=1, le=50, description="Số lượng bài mỗi trang")
+):
+    """Lấy danh sách các bài Listening có sẵn (Có phân trang)"""
     try:
-        # 1. Lấy passage
-        passage = await listening_service.get_passage(passage_id)
-        
-        # 2. Tạo hoặc lấy session (tạm thời dùng user_id cố định)
-        user_id = "test_user_001"
-        session = await listening_service.get_or_create_session(
-            user_id, 
-            passage_id, 
-            session_type="COMPREHENSION"
-        )
-        
-        # 3. Format dữ liệu
-        transcript = await listening_service.format_transcript(passage)
-        vocabulary = await listening_service.format_vocabulary(passage)
-        multiple_choices = await listening_service.format_multiple_choices(passage_id)
-        completions = await listening_service.format_completions(passage_id)
-        
-        # 4. Trả về response
-        return ListeningSessionStartResponse(
-            session_id=str(session.id),
-            passage_id=passage_id,
-            title=passage.title,
-            unit_code=passage.unit_code,
-            audio_url=passage.audio_url,
-            time_limit_minutes=passage.time_limit_minutes,
-            interactive_transcript=transcript,
-            key_vocabulary=vocabulary,
-            completed_questions=session.completed_questions,
-            total_questions=passage.total_questions,
-            multiple_choices=multiple_choices,
-            completions=completions
-        )
-    
+        return await ListeningService.get_all_passages(page, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(path="/passages/{passage_id}")
+async def get_passage_detail(passage_id: str):
+    """Xem chi tiết 1 bài trước khi làm (Mô tả, độ khó, điểm cao nhất của user...)"""
+    try:
+        user_id = "test_user_001" # TODO: Thay bằng current_user từ JWT Token
+        return await ListeningService.get_passage_detail(passage_id, user_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
+@router.get(path="/history", response_model=List[ListeningHistoryItemResponse])
+async def get_listening_history(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50)
+):
+    """Xem lại lịch sử các bài Listening đã hoàn thành (Comprehension & Dictation)"""
+    try:
+        user_id = "test_user_001" # TODO: Thay bằng current_user từ JWT Token
+        return await ListeningService.get_user_history(user_id, page, limit)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# 2. NHÓM BÀI LÀM: COMPREHENSION (NGHE HIỂU)
+# ==========================================
+
+@router.get(path="/passages/{passage_id}/start-comprehension", response_model=ComprehensionSessionStartResponse)
+async def start_comprehension_session(passage_id: str):
+    """Khởi tạo bài thi nghe hiểu (Lấy audio, transcript, Multiple choice, Completion)"""
+    try:
+        user_id = "test_user_001"
+        return await ListeningService.start_comprehension_session(user_id, passage_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(path="/sessions/{session_id}/draft")
+async def get_comprehension_draft(session_id: str):
+    """Lấy lại bản nháp Comprehension đang làm dở (Resume)"""
+    try:
+        return await ListeningService.get_comprehension_draft(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.patch(path="/sessions/{session_id}/draft", response_model=ListeningDraftResponse)
-async def save_listening_draft(session_id: str, payload: ListeningDraftRequest):
-    """Lưu nháp bài nghe (Comprehension) hoặc lưu chữ chép chính tả (Dictation)"""
+async def save_comprehension_draft(session_id: str, payload: ListeningDraftRequest):
+    """Lưu nháp tiến độ chọn đáp án khi user đang làm bài"""
     try:
-        if payload.session_type == "COMPREHENSION":
-            result = await listening_service.save_comprehension_draft(
-                session_id=session_id,
-                user_answers=payload.user_answers,
-                time_remaining_seconds=payload.time_remaining_seconds
-            )
-        else:  # DICTATION
-            result = await listening_service.save_dictation_draft(
-                session_id=session_id,
-                user_typed_text=payload.user_typed_text or ""
-            )
-        
-        return ListeningDraftResponse(
-            session_id=session_id,
-            status="IN_PROGRESS",
-            message=result["message"]
-        )
-    
+        return await ListeningService.save_comprehension_draft(session_id, payload)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post(path="/sessions/{session_id}/submit", response_model=ListeningSubmitResponse)
-async def submit_listening_answers(session_id: str, payload: ListeningDraftRequest):
-    """Nộp bài nghe, nhận báo cáo phân tích ma trận kỹ năng hoặc tô màu chép chính tả"""
+async def submit_comprehension_answers(session_id: str, payload: ListeningDraftRequest):
+    """Nộp bài Comprehension để hệ thống chấm điểm và sinh ma trận phân tích"""
     try:
-        if payload.session_type == "COMPREHENSION":
-            result = await listening_service.grade_comprehension(
-                session_id=session_id,
-                user_answers=payload.user_answers
-            )
-        else:  # DICTATION
-            result = await listening_service.grade_dictation(
-                session_id=session_id,
-                user_typed_text=payload.user_typed_text or ""
-            )
-        
-        return result
-    
+        return await ListeningService.submit_comprehension_answers(session_id, payload)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
-@router.get(path="/sessions/{session_id}/draft")
-async def get_listening_draft(session_id: str):
-    """Lấy nháp bài nghe đã lưu"""
-    try:
-        result = await listening_service.get_draft(session_id)
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(path="/sessions/{session_id}")
-async def get_listening_session(session_id: str):
-    """Lấy thông tin session listening"""
+async def get_comprehension_session_result(session_id: str):
+    """Xem lại chi tiết bài Comprehension đã nộp (Báo cáo kết quả)"""
     try:
-        session = await listening_service.get_session(session_id)
-        passage = await session.passage_id.fetch()
-        
-        return {
-            "success": True,
-            "session_id": str(session.id),
-            "user_id": session.user_id,
-            "passage_id": str(passage.id),
-            "passage_title": passage.title,
-            "session_type": session.session_type,
-            "status": session.status,
-            "accuracy_rate": session.accuracy_rate,
-            "score_summary": session.score_summary,
-            "xp_earned": session.xp_earned,
-            "competency_matrix": session.competency_matrix,
-            "detailed_question_review": session.detailed_question_review,
-            "words_typed": session.words_typed,
-            "wpm": session.wpm,
-            "missed_contractions": session.missed_contractions,
-            "transcript_comparison": session.transcript_comparison,
-            "spelling_tip": session.spelling_tip,
-            "listening_insight": session.listening_insight,
-            "start_at": session.start_at,
-            "updated_at": session.updated_at
-        }
-    
+        return await ListeningService.get_comprehension_session_result(session_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# 3. NHÓM BÀI LÀM: DICTATION (CHÉP CHÍNH TẢ)
+# ==========================================
+
+@router.get(path="/passages/{passage_id}/start-dictation", response_model=DictationSessionStartResponse)
+async def start_dictation_session(passage_id: str):
+    """Khởi tạo bài chép chính tả (Lấy audio, transcript gốc, từ vựng)"""
+    try:
+        user_id = "test_user_001"
+        return await ListeningService.start_dictation_session(user_id, passage_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(path="/dictation-sessions/{session_id}/draft")
+async def get_dictation_draft(session_id: str):
+    """Lấy lại tiến độ gõ Dictation đang làm dở (Để load lại các câu đã check)"""
+    try:
+        return await ListeningService.get_dictation_draft(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post(path="/dictation-sessions/{session_id}/grade-sentence", response_model=DictationSentenceGradeResponse)
+async def check_and_save_dictation_sentence(session_id: str, payload: DictationSentenceGradeRequest):
+    """Chấm điểm tức thời và lưu lịch sử gõ của 1 câu riêng lẻ"""
+    try:
+        return await ListeningService.grade_and_save_dictation_sentence(
+            session_id=session_id, 
+            transcript_index=payload.transcript_index, 
+            user_typed_text=payload.user_typed_text
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post(path="/dictation-sessions/{session_id}/submit")
+async def submit_dictation_session(session_id: str):
+    """Bấm hoàn thành bài Dictation, chốt điểm tổng và khóa Session"""
+    try:
+        return await ListeningService.submit_dictation_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get(path="/dictation-sessions/{session_id}")
+async def get_dictation_session_result(session_id: str):
+    """Xem lại báo cáo kết quả chi tiết của bài Dictation sau khi đã nộp"""
+    try:
+        return await ListeningService.get_dictation_session_result(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
