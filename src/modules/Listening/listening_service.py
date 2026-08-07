@@ -7,6 +7,7 @@ from beanie import PydanticObjectId
 
 from models.Listening import (
     ListeningPassageModel,
+    ListeningAudioSegmentModel,
     ListeningMultipleChoiceModel,
     ListeningCompletionModel,
     UserListeningSessionModel
@@ -18,7 +19,9 @@ from .listening_dto import (
     ListeningCompletionResponse,
     ListeningSubmitResponse,
     QuestionReviewDetail,
-    TranscriptComparisonWord
+    TranscriptComparisonWord,
+    ListeningPassageSummary,
+    ListeningPassageListResponse
 )
 
 
@@ -39,6 +42,49 @@ class ListeningService:
 
         return await UserListeningSessionModel.get(session_id)
     
+    @staticmethod
+    async def list_passages(page: int = 1, limit: int = 10, question_type: Optional[str] = None):
+        """Liệt kê passage listening có sẵn, hỗ trợ lọc theo question_type."""
+        page = max(page, 1)
+        limit = max(limit, 1)
+
+        all_passages = await ListeningPassageModel.find_all().to_list()
+        
+        items = []
+        for passage in all_passages:
+            q_types = []
+            if await ListeningMultipleChoiceModel.find(ListeningMultipleChoiceModel.passage_id.id == passage.id).count() > 0:
+                q_types.append("Multiple Choice")
+            if await ListeningCompletionModel.find(ListeningCompletionModel.passage_id.id == passage.id).count() > 0:
+                q_types.append("Fill Blank")
+            
+            # Tất cả các bài nghe đều có thể làm chép chính tả (Dictation)
+            q_types.append("Dictation")
+
+            # Lọc theo question_type nếu có yêu cầu
+            if question_type and question_type != "All":
+                if question_type not in q_types:
+                    continue
+
+            items.append(
+                ListeningPassageSummary(
+                    id=str(passage.id),
+                    title=passage.title,
+                    unit_code=passage.unit_code,
+                    audio_url=passage.audio_url,
+                    time_limit_minutes=passage.time_limit_minutes,
+                    total_questions=passage.total_questions,
+                    question_types=q_types
+                )
+            )
+
+        total = len(items)
+        start = (page - 1) * limit
+        end = start + limit
+        page_items = items[start:end]
+
+        return page_items, total
+
     @staticmethod
     async def get_passage(passage_id: str) -> ListeningPassageModel:
         """Lấy passage theo ID"""
@@ -171,7 +217,8 @@ class ListeningService:
                 id=str(m.id),
                 order=m.order,
                 question_text=m.question_text,
-                options=m.options
+                options=m.options,
+                timestamp_clip=m.timestamp_clip
             ) for m in multiple_choices
         ]
     
@@ -298,17 +345,54 @@ class ListeningService:
                 if is_correct:
                     competency_matrix[comp_type] += 1
 
+            # Fetch audio segment
+            audio_url = None
+            start_time_ms = None
+            end_time_ms = None
+            segment_transcript = None
+            if mc.audio_segment_id:
+                try:
+                    seg = await mc.audio_segment_id.fetch()
+                    if seg:
+                        audio_url = seg.audio_file_url or passage.audio_url
+                        start_time_ms = seg.start_time_ms
+                        end_time_ms = seg.end_time_ms
+                        segment_transcript = seg.transcript
+                except Exception:
+                    pass
+
             detailed_review.append(QuestionReviewDetail(
+                question_id=question_id,
                 question_text=mc.question_text,
                 your_answer=user_answer or "Not answered",
                 correct_answer=mc.correct_answer,
                 is_correct=is_correct,
                 timestamp_clip=mc.timestamp_clip,
-                learning_hint=mc.learning_hint or ListeningService._get_default_hint(is_correct)
+                learning_hint=mc.learning_hint or ListeningService._get_default_hint(is_correct),
+                audio_url=audio_url,
+                start_time_ms=start_time_ms,
+                end_time_ms=end_time_ms,
+                segment_transcript=segment_transcript
             ))
 
         # 2. Chấm Completion
         for comp in completions:
+            # Fetch audio segment once per completion question block
+            audio_url = None
+            start_time_ms = None
+            end_time_ms = None
+            segment_transcript = None
+            if comp.audio_segment_id:
+                try:
+                    seg = await comp.audio_segment_id.fetch()
+                    if seg:
+                        audio_url = seg.audio_file_url or passage.audio_url
+                        start_time_ms = seg.start_time_ms
+                        end_time_ms = seg.end_time_ms
+                        segment_transcript = seg.transcript
+                except Exception:
+                    pass
+
             for gap_id, correct_answer in comp.correct_answers.items():
                 user_answer = user_answers.get(gap_id, "")
 
@@ -327,12 +411,17 @@ class ListeningService:
                         competency_matrix[comp_type] += 1
 
                 detailed_review.append(QuestionReviewDetail(
+                    question_id=str(comp.id),
                     question_text=f"Fill in the blank: {comp.template_text.replace(f'[{gap_id}]', '_____')}",
                     your_answer=user_answer or "Not answered",
                     correct_answer=correct_answer,
                     is_correct=is_correct,
                     timestamp_clip=None,
-                    learning_hint="Review the audio segment to find the missing word."
+                    learning_hint="Review the audio segment to find the missing word.",
+                    audio_url=audio_url,
+                    start_time_ms=start_time_ms,
+                    end_time_ms=end_time_ms,
+                    segment_transcript=segment_transcript
                 ))
 
         # Tính tỷ lệ phần trăm cho competency matrix
@@ -373,7 +462,9 @@ class ListeningService:
             missed_contractions=0,
             transcript_comparison=[],
             spelling_tip=None,
-            listening_insight=None
+            listening_insight=None,
+            audio_url=passage.audio_url,
+            interactive_transcript=await ListeningService.format_transcript(passage)
         )
     
     @staticmethod
@@ -412,7 +503,13 @@ class ListeningService:
         
         for i, original_word in enumerate(original_words):
             user_word = user_words[i] if i < len(user_words) else None
-            is_correct = user_word == original_word if user_word else False
+            
+            is_correct = False
+            if user_word:
+                import string
+                clean_user = user_word.strip(string.punctuation).lower()
+                clean_orig = original_word.strip(string.punctuation).lower()
+                is_correct = clean_user == clean_orig
             
             if is_correct:
                 correct_words += 1
@@ -421,10 +518,13 @@ class ListeningService:
             if original_word.lower() in contractions and not user_word:
                 missed_contractions += 1
             
+            status = "correct" if is_correct else ("wrong" if user_word else "missing")
+            
             transcript_comparison.append(TranscriptComparisonWord(
                 word=original_word,
                 user_word=user_word,
-                is_correct=is_correct
+                is_correct=is_correct,
+                status=status
             ))
         
         # Tính WPM (Words Per Minute)
@@ -452,7 +552,7 @@ class ListeningService:
         session.spelling_tip = spelling_tip
         session.listening_insight = listening_insight
         session.status = "COMPLETED"
-        session.score = correct_count
+        session.score = correct_words
         session.updated_at = datetime.now(UTC)
         await session.save()
         
@@ -470,9 +570,54 @@ class ListeningService:
             missed_contractions=missed_contractions,
             transcript_comparison=transcript_comparison,
             spelling_tip=spelling_tip,
-            listening_insight=listening_insight
+            listening_insight=listening_insight,
+            audio_url=passage.audio_url,
+            interactive_transcript=await ListeningService.format_transcript(passage)
         )
     
+    @staticmethod
+    async def get_user_history(
+        user_id: str,
+        page: int = 1,
+        limit: int = 10,
+        status: Optional[str] = None
+    ) -> Dict:
+        """Lấy danh sách các bài nghe user đã làm hoặc nháp dở"""
+        query = UserListeningSessionModel.find(UserListeningSessionModel.user_id == user_id)
+        if status:
+            query = query.find(UserListeningSessionModel.status == status)
+        
+        total = await query.count()
+        skip = (page - 1) * limit
+        sessions = await query.sort("-updated_at").skip(skip).limit(limit).to_list()
+        
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        items = []
+        for s in sessions:
+            passage = await s.passage_id.fetch()
+            accuracy_rate = s.accuracy_rate
+            items.append({
+                "session_id": str(s.id),
+                "passage_id": str(passage.id) if passage else "",
+                "passage_title": passage.title if passage else "Unknown Passage",
+                "score": int(s.score),
+                "total_questions": passage.total_questions if passage else s.completed_questions,
+                "accuracy_rate": round(accuracy_rate, 2),
+                "status": s.status,
+                "session_type": s.session_type,
+                "completed_questions": s.completed_questions,
+                "start_at": s.start_at.isoformat() if s.start_at else None,
+                "updated_at": s.updated_at.isoformat() if s.updated_at else None
+            })
+        
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+
     @staticmethod
     def _get_default_hint(is_correct: bool) -> str:
         """Lấy hint mặc định"""
@@ -523,3 +668,58 @@ class ListeningService:
             return "📚 Fair effort. Consider listening multiple times and using the transcript to check difficult sections."
         else:
             return "🎯 Keep practicing! Start with slower audio and gradually increase speed. Focus on key vocabulary first."
+
+    @staticmethod
+    async def get_audio_segment_by_question(question_id: str):
+        """Lấy audio segment và transcript segment theo question_id (hỗ trợ cả trắc nghiệm và điền ô trống)"""
+        # Tìm trong Multiple Choice
+        question = None
+        try:
+            question = await ListeningMultipleChoiceModel.get(PydanticObjectId(question_id))
+        except Exception:
+            pass
+
+        if not question:
+            try:
+                question = await ListeningMultipleChoiceModel.get(question_id)
+            except Exception:
+                pass
+
+        # Tìm trong Completion
+        if not question:
+            try:
+                question = await ListeningCompletionModel.get(PydanticObjectId(question_id))
+            except Exception:
+                pass
+            if not question:
+                try:
+                    question = await ListeningCompletionModel.get(question_id)
+                except Exception:
+                    pass
+
+        if not question:
+            raise ValueError("Question not found")
+
+        segment = None
+        if question.audio_segment_id:
+            segment = await question.audio_segment_id.fetch()
+
+        passage = await question.passage_id.fetch()
+        
+        if not segment:
+            return {
+                "questionId": question_id,
+                "audioUrl": passage.audio_url,
+                "startTime": 0,
+                "endTime": 0,
+                "transcript": "No transcript available for this question."
+            }
+
+        audio_url = segment.audio_file_url or passage.audio_url
+        return {
+            "questionId": question_id,
+            "audioUrl": audio_url,
+            "startTime": segment.start_time_ms,
+            "endTime": segment.end_time_ms,
+            "transcript": segment.transcript
+        }

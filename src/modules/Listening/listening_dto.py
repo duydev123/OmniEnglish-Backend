@@ -17,12 +17,39 @@ class ListeningMultipleChoiceResponse(BaseModel):
     order: int                                     #[cite: 12]
     question_text: str                             #[cite: 12]
     options: List[str]                             # Cố tình giấu correct_answer[cite: 12]
+    timestamp_clip: Optional[str] = None           #[cite: 12]
 
 class ListeningCompletionResponse(BaseModel):
     id: str
     order: int                                     #[cite: 12]
     template_text: str                             #[cite: 12]
     case_sensitive: bool                            #[cite: 12]
+
+class ListeningPassageSummary(BaseModel):
+    id: str
+    title: str
+    unit_code: Optional[str] = None
+    audio_url: str
+    time_limit_minutes: int
+    total_questions: int
+    question_types: List[str] = Field(default_factory=list)
+
+class ListeningPassageDetailResponse(BaseModel):
+    id: str
+    title: str
+    unit_code: Optional[str] = None
+    audio_url: str
+    interactive_transcript: List[TranscriptLine] = Field(default_factory=list)
+    key_vocabulary: List[KeyVocabularyItem] = Field(default_factory=list)
+    time_limit_minutes: int
+    total_questions: int
+    created_at: Optional[str] = None
+
+class ListeningPassageListResponse(BaseModel):
+    items: List[ListeningPassageSummary]
+    page: int
+    limit: int
+    total: int
 
 # --- Schema Chính Trả Về (Response) ---
 class ListeningSessionStartResponse(BaseModel):
@@ -44,6 +71,9 @@ class ListeningSessionStartResponse(BaseModel):
     # Câu hỏi (Dành cho session_type = COMPREHENSION)
     multiple_choices: List[ListeningMultipleChoiceResponse]
     completions: List[ListeningCompletionResponse]
+    user_answers: Dict[str, str] = Field(default_factory=dict)
+    user_typed_text: Optional[str] = None
+    time_remaining_seconds: int = Field(default=0)
 
 
 
@@ -78,13 +108,20 @@ class QuestionReviewDetail(BaseModel):
     your_answer: str
     correct_answer: str
     is_correct: bool
-    timestamp_clip: Optional[str] = None            # VD: "00:45" (Nút REPLAY CLIP)[cite: 12]
-    learning_hint: Optional[str] = None             # Gợi ý bài học/lỗi sai[cite: 12]
+    timestamp_clip: Optional[str] = None            # VD: "00:45" (Nút REPLAY CLIP)
+    learning_hint: Optional[str] = None             # Gợi ý bài học/lỗi sai
+    question_id: Optional[str] = None
+    audio_url: Optional[str] = None
+    start_time_ms: Optional[int] = None
+    end_time_ms: Optional[int] = None
+    segment_transcript: Optional[str] = None
 
 class TranscriptComparisonWord(BaseModel):
-    word: str                                      # Từ đúng gốc[cite: 12]
-    user_word: Optional[str] = None                # Từ user đã gõ[cite: 12]
-    is_correct: bool                               # True (Xanh) / False (Đỏ)[cite: 12]
+    word: str                                      # Từ đúng gốc
+    user_word: Optional[str] = None                # Từ user đã gõ
+    is_correct: bool                               # True (Xanh) / False (Đỏ)
+    status: Optional[str] = None                   # "correct", "wrong", "missing"
+
 
 # --- Schema Trả Về Chính (Response) ---
 class ListeningSubmitResponse(BaseModel):
@@ -108,6 +145,8 @@ class ListeningSubmitResponse(BaseModel):
     wpm: int = 0                                   # VD: 42 WPM[cite: 12]
     missed_contractions: int = 0                   # VD: 2[cite: 12]
     
-    transcript_comparison: List[TranscriptComparisonWord] = Field(default_factory=list) # Tô màu Xanh/Đỏ[cite: 12]
-    spelling_tip: Optional[str] = None             # Mẹo chính tả[cite: 12]
-    listening_insight: Optional[str] = None        # Nhận xét AI[cite: 12]
+    transcript_comparison: List[TranscriptComparisonWord] = Field(default_factory=list) # Tô màu Xanh/Đỏ
+    spelling_tip: Optional[str] = None             # Mẹo chính tả
+    listening_insight: Optional[str] = None        # Nhận xét AI
+    audio_url: Optional[str] = None
+    interactive_transcript: Optional[List[TranscriptLine]] = None

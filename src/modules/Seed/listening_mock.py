@@ -1,4 +1,3 @@
-
 MOCK_LISTENING_PASSAGES = [
     {
         "passage": {
@@ -38,6 +37,50 @@ MOCK_LISTENING_PASSAGES = [
                 {"word": "Coat", "meaning": "An outer garment worn outdoors"}
             ]
         },
+        "audio_segments": [
+            {
+                "key": "segment_1",
+                "start_time_ms": 3000,
+                "end_time_ms": 8000,
+                "transcript": "Today is November 26th.",
+                "transcript_json": [
+                    {"word": "Today", "start_ms": 3000, "end_ms": 3500},
+                    {"word": "is", "start_ms": 3500, "end_ms": 3800},
+                    {"word": "November", "start_ms": 3800, "end_ms": 4500},
+                    {"word": "26th", "start_ms": 4500, "end_ms": 5200}
+                ]
+            },
+            {
+                "key": "segment_2",
+                "start_time_ms": 9000,
+                "end_time_ms": 15000,
+                "transcript": "It snowed all day yesterday.",
+                "transcript_json": [
+                    {"word": "It", "start_ms": 9000, "end_ms": 9300},
+                    {"word": "snowed", "start_ms": 9300, "end_ms": 10000},
+                    {"word": "all", "start_ms": 10000, "end_ms": 10500},
+                    {"word": "day", "start_ms": 10500, "end_ms": 11000},
+                    {"word": "yesterday", "start_ms": 11000, "end_ms": 12000}
+                ]
+            },
+            {
+                "key": "segment_3",
+                "start_time_ms": 23000,
+                "end_time_ms": 28000,
+                "transcript": "I need to wear a warm coat and gloves.",
+                "transcript_json": [
+                    {"word": "I", "start_ms": 23000, "end_ms": 23300},
+                    {"word": "need", "start_ms": 23300, "end_ms": 23800},
+                    {"word": "to", "start_ms": 23800, "end_ms": 24000},
+                    {"word": "wear", "start_ms": 24000, "end_ms": 24300},
+                    {"word": "a", "start_ms": 24300, "end_ms": 24500},
+                    {"word": "warm", "start_ms": 24500, "end_ms": 25000},
+                    {"word": "coat", "start_ms": 25000, "end_ms": 25500},
+                    {"word": "and", "start_ms": 25500, "end_ms": 25800},
+                    {"word": "gloves", "start_ms": 25800, "end_ms": 26500}
+                ]
+            }
+        ],
         "multiple_choices": [
             {
                 "order": 1,
@@ -50,6 +93,7 @@ MOCK_LISTENING_PASSAGES = [
                 ],
                 "correct_answer": "A. November 26th",
                 "timestamp_clip": "0:03",
+                "audio_segment_key": "segment_1",
                 "competency_type": "Specific Information Retrieval",
                 "learning_hint": "Listen carefully to the date mentioned at the beginning."
             },
@@ -64,6 +108,7 @@ MOCK_LISTENING_PASSAGES = [
                 ],
                 "correct_answer": "B. It snowed all day",
                 "timestamp_clip": "0:09",
+                "audio_segment_key": "segment_2",
                 "competency_type": "Specific Information Retrieval",
                 "learning_hint": "Focus on what happened yesterday."
             }
@@ -76,6 +121,7 @@ MOCK_LISTENING_PASSAGES = [
                     "gap_1": "coat",
                     "gap_2": "gloves"
                 },
+                "audio_segment_key": "segment_3",
                 "case_sensitive": False
             }
         ]
@@ -112,6 +158,26 @@ MOCK_LISTENING_PASSAGES = [
                 {"word": "Timeline", "meaning": "A schedule of events or deadlines"}
             ]
         },
+        "audio_segments": [
+            {
+                "key": "negotiation_seg_1",
+                "start_time_ms": 5000,
+                "end_time_ms": 12000,
+                "transcript": "Good morning, everyone. Thank you for coming to this meeting."
+            },
+            {
+                "key": "negotiation_seg_2",
+                "start_time_ms": 13000,
+                "end_time_ms": 20000,
+                "transcript": "Today we are going to discuss the new project timeline."
+            },
+            {
+                "key": "negotiation_seg_3",
+                "start_time_ms": 21000,
+                "end_time_ms": 28000,
+                "transcript": "We need to deliver the first phase by next month."
+            }
+        ],
         "multiple_choices": [
             {
                 "order": 1,
@@ -124,6 +190,7 @@ MOCK_LISTENING_PASSAGES = [
                 ],
                 "correct_answer": "A. New project timeline",
                 "timestamp_clip": "0:13",
+                "audio_segment_key": "negotiation_seg_2",
                 "competency_type": "Global Understanding",
                 "learning_hint": "Listen for the main topic announced at the start."
             },
@@ -138,6 +205,7 @@ MOCK_LISTENING_PASSAGES = [
                 ],
                 "correct_answer": "C. Next month",
                 "timestamp_clip": "0:21",
+                "audio_segment_key": "negotiation_seg_3",
                 "competency_type": "Specific Information Retrieval",
                 "learning_hint": "Pay attention to the deadline mentioned."
             }
@@ -149,6 +217,7 @@ MOCK_LISTENING_PASSAGES = [
                 "correct_answers": {
                     "gap_1": "project timeline"
                 },
+                "audio_segment_key": "negotiation_seg_2",
                 "case_sensitive": False
             }
         ]

@@ -1,4 +1,6 @@
 import os
+import logging
+import sys
 from contextlib import asynccontextmanager
 
 from beanie import init_beanie
@@ -33,10 +35,12 @@ from models.Reading import (
     ReadingHeadingMatchingModel,
     ReadingFillBlankModel,
     ReadingTrueFalseNotGivenModel,
-    UserReadingSessionModel
+    UserReadingSessionModel,
+    ReadingVocabularyBookmarkModel
 )
 from models.Listening import (
     ListeningPassageModel,
+    ListeningAudioSegmentModel,
     ListeningMultipleChoiceModel,
     ListeningCompletionModel,
     UserListeningSessionModel
@@ -45,7 +49,10 @@ from models.Listening import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongo_uri = os.getenv("MONGO_URI")
+    mongo_uri = os.getenv(
+        "MONGO_URI",
+        "mongodb+srv://omni_english_db:duy123@cluster0.0clx1qx.mongodb.net/?appName=Cluster0"
+    )
     client = AsyncIOMotorClient(mongo_uri)
 
     await init_beanie(
@@ -58,23 +65,41 @@ async def lifespan(app: FastAPI):
             ReadingFillBlankModel,
             ReadingTrueFalseNotGivenModel,
             UserReadingSessionModel,
+            ReadingVocabularyBookmarkModel,
             ListeningPassageModel,
+            ListeningAudioSegmentModel,
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
         ],
     )
+    print("Database connected successfully!")
     yield
     client.close()
 
+
+# ── Logging config ──────────────────────────────────────────────────────────
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger("omni_english")
 
 # Config app FastAPI
 app = FastAPI(title="omni english web", lifespan=lifespan)
 
 # Config CORS
+# Lưu ý: allow_origins=["*"] + allow_credentials=True là không hợp lệ (CORS spec),
+# trình duyệt sẽ block request. Cần chỉ định cụ thể origin hoặc tắt credentials.
+ALLOWED_ORIGINS = os.getenv(
+    "ALLOWED_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
+).split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

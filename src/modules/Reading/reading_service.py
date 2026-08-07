@@ -1,7 +1,10 @@
+import logging
 import random
 from datetime import datetime, UTC
 from typing import Dict, List, Optional, Tuple
 from beanie import PydanticObjectId
+
+logger = logging.getLogger("omni_english")
 
 from models.Reading import (
     ReadingPassageModel,
@@ -9,7 +12,8 @@ from models.Reading import (
     ReadingHeadingMatchingModel,
     ReadingFillBlankModel,
     ReadingTrueFalseNotGivenModel,
-    UserReadingSessionModel
+    UserReadingSessionModel,
+    ReadingVocabularyBookmarkModel
 )
 from .Reading_dto import (
     ReadingSessionStartResponse,
@@ -18,7 +22,16 @@ from .Reading_dto import (
     FillBlankResponse,
     TrueFalseNotGivenResponse,
     ReadingSubmitResponse,
-    QuestionResult
+    QuestionResult,
+    ReadingSessionDetailResponse,
+    PassageSummaryResponse,
+    PassageListResponse,
+    PassageDetailResponse,
+    UserHistoryItemResponse,
+    UserHistoryListResponse,
+    UserReadingStatsResponse,
+    ReadingSessionReviewResponse,
+    ReadingVocabularyBookmarkResponse
 )
 
 
@@ -260,7 +273,9 @@ class ReadingService:
             detailed_results[question_id] = QuestionResult(
                 is_correct=is_correct,
                 user_answer=user_answer,
-                correct_answer=mc.correct_answer
+                correct_answer=mc.correct_answer,
+                statement=mc.question_text,
+                options=mc.options
             )
         
         # 2. Chấm Heading Matching
@@ -274,7 +289,8 @@ class ReadingService:
                 detailed_results[paragraph_id] = QuestionResult(
                     is_correct=is_correct,
                     user_answer=user_answer,
-                    correct_answer=correct_heading
+                    correct_answer=correct_heading,
+                    statement=f"Heading selection for paragraph {paragraph_id.replace('paragraph_', '').replace('_', ' ').strip().capitalize()}"
                 )
         
         # 3. Chấm Fill-in-the-blank
@@ -296,7 +312,8 @@ class ReadingService:
                 detailed_results[blank_id] = QuestionResult(
                     is_correct=is_correct,
                     user_answer=user_answer,
-                    correct_answer=correct_answer
+                    correct_answer=correct_answer,
+                    statement=f"Sentence completion blank {blank_id.replace('blank_', '')}"
                 )
         
         # 4. Chấm True/False/Not Given
@@ -314,10 +331,10 @@ class ReadingService:
                 detailed_results[statement_id] = QuestionResult(
                     is_correct=is_correct,
                     user_answer=user_answer,
-                    correct_answer=correct_answer
+                    correct_answer=correct_answer,
+                    statement=item["statement"],
+                    options=["TRUE", "FALSE", "NOT GIVEN"]
                 )
-                # Thêm statement để frontend biết
-                detailed_results[statement_id].statement = item["statement"]
         
         # Cập nhật session
         session.score = score
@@ -337,4 +354,269 @@ class ReadingService:
             total_questions=total_questions,
             accuracy_rate=round(accuracy_rate, 2),
             detailed_results=detailed_results
+        )
+
+    @staticmethod
+    async def get_session_details(session_id: str) -> ReadingSessionDetailResponse:
+        """5. Lấy toàn bộ thông tin session"""
+        session = await UserReadingSessionModel.get(session_id)
+        if not session:
+            raise ValueError("Session not found")
+        passage = await session.passage_id.fetch()
+        return ReadingSessionDetailResponse(
+            session_id=str(session.id),
+            user_id=session.user_id,
+            passage_id=str(passage.id) if passage else "",
+            passage_title=passage.title if passage else None,
+            completed_questions=session.completed_questions,
+            total_questions=session.total_questions,
+            time_remaining_seconds=session.time_remaining_seconds,
+            score=session.score,
+            status=session.status,
+            user_answers=session.user_answers,
+            start_at=session.start_at.isoformat() if session.start_at else None,
+            updated_at=session.updated_at.isoformat() if session.updated_at else None
+        )
+
+    @staticmethod
+    async def get_passages(
+        page: int = 1,
+        limit: int = 10,
+        level: Optional[str] = None,
+        topic: Optional[str] = None,
+        question_type: Optional[str] = None
+    ) -> PassageListResponse:
+        """6. Lấy danh sách các bài đọc có sẵn (phân trang)"""
+        passage_ids = None
+        if question_type:
+            if question_type == "Multiple Choice":
+                records = await ReadingMultipleChoiceModel.find().to_list()
+                passage_ids = {r.passage_id.id for r in records}
+            elif question_type == "Heading Matching":
+                records = await ReadingHeadingMatchingModel.find().to_list()
+                passage_ids = {r.passage_id.id for r in records}
+            elif question_type == "Fill Blank":
+                records = await ReadingFillBlankModel.find().to_list()
+                passage_ids = {r.passage_id.id for r in records}
+            elif question_type == "T/F/NG":
+                records = await ReadingTrueFalseNotGivenModel.find().to_list()
+                passage_ids = {r.passage_id.id for r in records}
+            else:
+                passage_ids = set()
+
+        query = ReadingPassageModel.find()
+        if passage_ids is not None:
+            query = query.find({"_id": {"$in": list(passage_ids)}})
+        if topic:
+            query = query.find({"topic": {"$regex": topic, "$options": "i"}})
+        
+        total = await query.count()
+        skip = (page - 1) * limit
+        passages = await query.sort("-created_at").skip(skip).limit(limit).to_list()
+        
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        items = []
+        for p in passages:
+            q_types = []
+            if await ReadingMultipleChoiceModel.find(ReadingMultipleChoiceModel.passage_id.id == p.id).count() > 0:
+                q_types.append("Multiple Choice")
+            if await ReadingHeadingMatchingModel.find(ReadingHeadingMatchingModel.passage_id.id == p.id).count() > 0:
+                q_types.append("Heading Matching")
+            if await ReadingFillBlankModel.find(ReadingFillBlankModel.passage_id.id == p.id).count() > 0:
+                q_types.append("Fill Blank")
+            if await ReadingTrueFalseNotGivenModel.find(ReadingTrueFalseNotGivenModel.passage_id.id == p.id).count() > 0:
+                q_types.append("T/F/NG")
+
+            items.append(
+                PassageSummaryResponse(
+                    id=str(p.id),
+                    title=p.title,
+                    topic=p.topic,
+                    time_limit_minutes=p.time_limit_minutes,
+                    total_questions=p.total_questions,
+                    image_url=p.image_url,
+                    learning_tip=p.learning_tip,
+                    created_at=p.created_at.isoformat() if p.created_at else None,
+                    question_types=q_types
+                )
+            )
+        return PassageListResponse(
+            items=items,
+            total=total,
+            page=page,
+            limit=limit,
+            total_pages=total_pages
+        )
+
+    @staticmethod
+    async def get_passage_detail(passage_id: str) -> PassageDetailResponse:
+        """7. Lấy thông tin chi tiết của một passage"""
+        passage = await ReadingPassageModel.get(passage_id)
+        if not passage:
+            raise ValueError("Passage not found")
+        return PassageDetailResponse(
+            id=str(passage.id),
+            title=passage.title,
+            topic=passage.topic,
+            content=passage.content,
+            image_url=passage.image_url,
+            time_limit_minutes=passage.time_limit_minutes,
+            total_questions=passage.total_questions,
+            learning_tip=passage.learning_tip,
+            created_at=passage.created_at.isoformat() if passage.created_at else None
+        )
+
+    @staticmethod
+    async def get_user_history(
+        user_id: str,
+        page: int = 1,
+        limit: int = 10,
+        status: Optional[str] = None
+    ) -> UserHistoryListResponse:
+        """8. Lấy danh sách các bài đọc user đã làm"""
+        query = UserReadingSessionModel.find(UserReadingSessionModel.user_id == user_id)
+        if status:
+            query = query.find(UserReadingSessionModel.status == status)
+        
+        total = await query.count()
+        skip = (page - 1) * limit
+        sessions = await query.sort("-updated_at").skip(skip).limit(limit).to_list()
+        
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        items = []
+        for s in sessions:
+            passage = await s.passage_id.fetch()
+            accuracy_rate = (s.score / s.total_questions * 100) if s.total_questions > 0 else 0
+            items.append(UserHistoryItemResponse(
+                session_id=str(s.id),
+                passage_id=str(passage.id) if passage else "",
+                passage_title=passage.title if passage else "Unknown Passage",
+                score=s.score,
+                total_questions=s.total_questions,
+                accuracy_rate=round(accuracy_rate, 2),
+                status=s.status,
+                attempt_number=s.attempt_number,
+                completed_questions=s.completed_questions,
+                start_at=s.start_at.isoformat() if s.start_at else None,
+                updated_at=s.updated_at.isoformat() if s.updated_at else None
+            ))
+        
+        return UserHistoryListResponse(
+            items=items,
+            total=total,
+            page=page,
+            limit=limit,
+            total_pages=total_pages
+        )
+
+    @staticmethod
+    async def delete_session(session_id: str) -> Dict:
+        """9. Hủy session đang làm dở"""
+        session = await UserReadingSessionModel.get(session_id)
+        if not session:
+            raise ValueError("Session not found")
+        await session.delete()
+        return {
+            "success": True,
+            "message": "Session deleted successfully",
+            "session_id": session_id
+        }
+
+    @staticmethod
+    async def get_user_stats(user_id: str) -> UserReadingStatsResponse:
+        """10. Thống kê tổng quan của user"""
+        completed_sessions = await UserReadingSessionModel.find(
+            UserReadingSessionModel.user_id == user_id,
+            UserReadingSessionModel.status == "COMPLETED"
+        ).to_list()
+        
+        total_completed = len(completed_sessions)
+        if total_completed == 0:
+            return UserReadingStatsResponse(
+                total_sessions_completed=0,
+                average_accuracy_rate=0.0,
+                highest_score=0,
+                lowest_score=0,
+                skills_to_improve=["Vocabulary Matching", "Multiple Choice", "True/False/Not Given"],
+                total_xp=0
+            )
+        
+        scores = [s.score for s in completed_sessions]
+        accuracies = [(s.score / s.total_questions * 100) if s.total_questions > 0 else 0 for s in completed_sessions]
+        avg_acc = sum(accuracies) / total_completed
+        highest = max(scores)
+        lowest = min(scores)
+        total_xp = sum(scores) * 10
+        
+        skills_to_improve = []
+        if avg_acc < 80:
+            skills_to_improve.append("Multiple Choice")
+        if avg_acc < 70:
+            skills_to_improve.append("True/False/Not Given")
+        if not skills_to_improve:
+            skills_to_improve = ["Advanced Vocabulary Matching"]
+        
+        return UserReadingStatsResponse(
+            total_sessions_completed=total_completed,
+            average_accuracy_rate=round(avg_acc, 2),
+            highest_score=highest,
+            lowest_score=lowest,
+            skills_to_improve=skills_to_improve,
+            total_xp=total_xp
+        )
+
+    @staticmethod
+    async def get_session_review(session_id: str) -> ReadingSessionReviewResponse:
+        """11. Review bài đã làm"""
+        session = await UserReadingSessionModel.get(session_id)
+        if not session:
+            raise ValueError("Session not found")
+        
+        passage = await session.passage_id.fetch()
+        
+        res = await ReadingService.submit_answers(
+            session_id=session_id,
+            user_answers=session.user_answers,
+            time_remaining=session.time_remaining_seconds
+        )
+        
+        return ReadingSessionReviewResponse(
+            session_id=str(session.id),
+            passage_id=str(passage.id) if passage else "",
+            passage_title=passage.title if passage else "",
+            passage_content=passage.content if passage else "",
+            score=res.score,
+            total_questions=res.total_questions,
+            accuracy_rate=res.accuracy_rate,
+            status=session.status,
+            detailed_results=res.detailed_results
+        )
+
+    @staticmethod
+    async def bookmark_vocabulary(
+        session_id: str,
+        word: str,
+        context: Optional[str] = None
+    ) -> ReadingVocabularyBookmarkResponse:
+        """12. Bookmark/Nổi bật từ vựng"""
+        session = await UserReadingSessionModel.get(session_id)
+        if not session:
+            raise ValueError("Session not found")
+        
+        bookmark = ReadingVocabularyBookmarkModel(
+            user_id=session.user_id,
+            session_id=session_id,
+            word=word,
+            context=context
+        )
+        await bookmark.insert()
+        
+        return ReadingVocabularyBookmarkResponse(
+            success=True,
+            message="Vocabulary bookmarked successfully",
+            id=str(bookmark.id),
+            session_id=session_id,
+            word=word,
+            context=context,
+            created_at=bookmark.created_at.isoformat() if bookmark.created_at else None
         )

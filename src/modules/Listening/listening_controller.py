@@ -1,20 +1,59 @@
 # modules/Listening/listening_controller.py
 
 from fastapi import APIRouter, HTTPException
+from typing import Optional, List, Dict, Any
 from .listening_service import ListeningService
 from .listening_dto import (
     ListeningSessionStartResponse,
     ListeningDraftRequest,
     ListeningDraftResponse,
-    ListeningSubmitResponse
+    ListeningSubmitResponse,
+    ListeningPassageListResponse,
+    ListeningPassageDetailResponse
 )
 
 router = APIRouter()
 listening_service = ListeningService()
 
 
+@router.get(path="/passages", response_model=ListeningPassageListResponse)
+async def list_listening_passages(
+    page: int = 1,
+    limit: int = 10,
+    question_type: Optional[str] = None
+):
+    """Liệt kê các passage listening có sẵn để frontend chọn bài."""
+    try:
+        items, total = await listening_service.list_passages(page=page, limit=limit, question_type=question_type)
+        return ListeningPassageListResponse(items=items, page=page, limit=limit, total=total)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/passages/{passage_id}", response_model=ListeningPassageDetailResponse)
+async def get_listening_passage_detail(passage_id: str):
+    """Lấy thông tin chi tiết của một passage listening."""
+    try:
+        passage = await listening_service.get_passage(passage_id)
+        return ListeningPassageDetailResponse(
+            id=str(passage.id),
+            title=passage.title,
+            unit_code=passage.unit_code,
+            audio_url=passage.audio_url,
+            interactive_transcript=await listening_service.format_transcript(passage),
+            key_vocabulary=await listening_service.format_vocabulary(passage),
+            time_limit_minutes=passage.time_limit_minutes,
+            total_questions=passage.total_questions,
+            created_at=passage.created_at.isoformat() if getattr(passage, 'created_at', None) else None,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
 @router.get(path="/passages/{passage_id}/start", response_model=ListeningSessionStartResponse)
-async def start_listening_session(passage_id: str):
+async def start_listening_session(passage_id: str, session_type: str = "COMPREHENSION"):
     """Lấy file audio, transcript song ngữ, từ vựng và danh sách câu hỏi"""
     try:
         # 1. Lấy passage
@@ -25,7 +64,7 @@ async def start_listening_session(passage_id: str):
         session = await listening_service.get_or_create_session(
             user_id, 
             passage_id, 
-            session_type="COMPREHENSION"
+            session_type=session_type
         )
         
         # 3. Format dữ liệu
@@ -47,7 +86,10 @@ async def start_listening_session(passage_id: str):
             completed_questions=session.completed_questions,
             total_questions=passage.total_questions,
             multiple_choices=multiple_choices,
-            completions=completions
+            completions=completions,
+            user_answers=session.user_answers or {},
+            user_typed_text=session.user_typed_text,
+            time_remaining_seconds=session.time_remaining_seconds if session.time_remaining_seconds is not None else (passage.time_limit_minutes * 60)
         )
     
     except ValueError as e:
@@ -116,6 +158,19 @@ async def get_listening_draft(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+@router.get(path="/users/{user_id}/history")
+async def get_user_listening_history(
+    user_id: str,
+    page: int = 1,
+    limit: int = 10,
+    status: Optional[str] = None
+):
+    """Lấy danh sách lịch sử/nháp làm bài nghe của user"""
+    try:
+        return await listening_service.get_user_history(user_id=user_id, page=page, limit=limit, status=status)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 @router.get(path="/sessions/{session_id}")
 async def get_listening_session(session_id: str):
     """Lấy thông tin session listening"""
@@ -143,9 +198,23 @@ async def get_listening_session(session_id: str):
             "spelling_tip": session.spelling_tip,
             "listening_insight": session.listening_insight,
             "start_at": session.start_at,
-            "updated_at": session.updated_at
+            "updated_at": session.updated_at,
+            "audio_url": passage.audio_url,
+            "interactive_transcript": await listening_service.format_transcript(passage)
         }
     
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/questions/{question_id}/audio-segment")
+async def get_question_audio_segment(question_id: str):
+    """Lấy audio segment và transcript segment theo question_id"""
+    try:
+        result = await listening_service.get_audio_segment_by_question(question_id)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:

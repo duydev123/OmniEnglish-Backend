@@ -42,6 +42,7 @@ class ReadingSessionStartResponse(BaseModel):
     heading_matchings: List[HeadingMatchingResponse]
     fill_blanks: List[FillBlankResponse]
     true_false_not_given: List[TrueFalseNotGivenResponse]  
+    user_answers: Dict[str, str] = Field(default_factory=dict)
 
 
 
@@ -75,14 +76,128 @@ class QuestionResult(BaseModel):
     user_answer: str
     correct_answer: str
     statement: Optional[str] = Field(default=None, description="Nội dung câu hỏi (cho True/False/Not Given)")
+    options: Optional[List[str]] = None
 
 # --- Schema Trả Về (Response) ---
 class ReadingSubmitResponse(BaseModel):
-    status: str = "COMPLETED" #[cite: 15]
-    score: int                #[cite: 15]
-    total_questions: int      #[cite: 15]
+    status: str = "COMPLETED"
+    score: int
+    total_questions: int
     accuracy_rate: float
     
     # Chi tiết để Frontend tô màu Xanh/Đỏ
-    # Format: {"mc_id_1": {"is_correct": True, "user_answer": "...", "correct_answer": "..."}}
     detailed_results: Dict[str, QuestionResult]
+
+
+# --- DTOs mới cho các Endpoint 5 -> 12 ---
+
+# 5. Thông tin Session
+class ReadingSessionDetailResponse(BaseModel):
+    session_id: str
+    user_id: str
+    passage_id: str
+    passage_title: Optional[str] = None
+    completed_questions: int
+    total_questions: int
+    time_remaining_seconds: int
+    score: int
+    status: str
+    user_answers: Dict[str, str]
+    start_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+# 6. Danh sách Passages (Phân trang)
+class PassageSummaryResponse(BaseModel):
+    id: str
+    title: str
+    topic: str
+    time_limit_minutes: int
+    total_questions: int
+    image_url: Optional[str] = None
+    learning_tip: Optional[str] = None
+    created_at: Optional[str] = None
+    question_types: List[str] = Field(default_factory=list)
+
+
+class PassageListResponse(BaseModel):
+    items: List[PassageSummaryResponse]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+# 7. Chi tiết Passage
+class PassageDetailResponse(BaseModel):
+    id: str
+    title: str
+    topic: str
+    content: str
+    image_url: Optional[str] = None
+    time_limit_minutes: int
+    total_questions: int
+    learning_tip: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+# 8. Lịch sử làm bài của User
+class UserHistoryItemResponse(BaseModel):
+    session_id: str
+    passage_id: str
+    passage_title: str
+    score: int
+    total_questions: int
+    accuracy_rate: float
+    status: str
+    attempt_number: int
+    completed_questions: int = 0
+    start_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class UserHistoryListResponse(BaseModel):
+    items: List[UserHistoryItemResponse]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
+# 10. Thống kê tổng quan của User
+class UserReadingStatsResponse(BaseModel):
+    total_sessions_completed: int
+    average_accuracy_rate: float
+    highest_score: int
+    lowest_score: int
+    skills_to_improve: List[str]
+    total_xp: int
+
+
+# 11. Review bài đã làm
+class ReadingSessionReviewResponse(BaseModel):
+    session_id: str
+    passage_id: str
+    passage_title: str
+    passage_content: str
+    score: int
+    total_questions: int
+    accuracy_rate: float
+    status: str
+    detailed_results: Dict[str, QuestionResult]
+
+
+# 12. Bookmark từ vựng
+class ReadingVocabularyBookmarkRequest(BaseModel):
+    word: str = Field(..., min_length=1)
+    context: Optional[str] = None
+
+
+class ReadingVocabularyBookmarkResponse(BaseModel):
+    success: bool = True
+    message: str
+    id: str
+    session_id: str
+    word: str
+    context: Optional[str] = None
+    created_at: Optional[str] = None

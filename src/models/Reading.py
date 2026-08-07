@@ -91,3 +91,17 @@ class UserReadingSessionModel(Document):
         indexes = [
             [("user_id", 1), ("passage_id", 1), ("attempt_number", 1)]
         ]
+
+
+# ==========================================
+# 4. BẢNG LƯU TỪ VỰNG BOOKMARK TRONG READING
+# ==========================================
+class ReadingVocabularyBookmarkModel(Document):
+    user_id: str = Field(default="test_user_001")
+    session_id: str = Field(...)
+    word: str = Field(..., min_length=1)
+    context: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "reading_vocabulary_bookmarks"

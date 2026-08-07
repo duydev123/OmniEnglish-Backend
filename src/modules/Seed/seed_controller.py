@@ -9,6 +9,7 @@ from models.Reading import (
 )
 from models.Listening import (
     ListeningPassageModel,
+    ListeningAudioSegmentModel,
     ListeningMultipleChoiceModel,
     ListeningCompletionModel,
     UserListeningSessionModel
@@ -81,6 +82,7 @@ async def seed_listening_passages():
     try:
         # Xóa dữ liệu cũ
         await ListeningPassageModel.delete_all()
+        await ListeningAudioSegmentModel.delete_all()
         await ListeningMultipleChoiceModel.delete_all()
         await ListeningCompletionModel.delete_all()
         await UserListeningSessionModel.delete_all()
@@ -88,6 +90,7 @@ async def seed_listening_passages():
         results = []
         stats = {
             "passages": 0,
+            "audio_segments": 0,
             "multiple_choices": 0,
             "completions": 0
         }
@@ -98,20 +101,39 @@ async def seed_listening_passages():
             passage = ListeningPassageModel(**passage_data)
             await passage.insert()
             stats["passages"] += 1
+
+            # 2. Tạo audio segments
+            segment_key_to_doc = {}
+            for seg_data in mock_data.get("audio_segments", []):
+                key = seg_data.pop("key", None)
+                seg = ListeningAudioSegmentModel(
+                    passage_id=passage,
+                    **seg_data
+                )
+                await seg.insert()
+                stats["audio_segments"] += 1
+                if key:
+                    segment_key_to_doc[key] = seg
             
-            # 2. Tạo multiple choices
+            # 3. Tạo multiple choices
             for mc_data in mock_data.get("multiple_choices", []):
+                audio_key = mc_data.pop("audio_segment_key", None)
+                audio_seg = segment_key_to_doc.get(audio_key) if audio_key else None
                 mc = ListeningMultipleChoiceModel(
                     passage_id=passage,
+                    audio_segment_id=audio_seg,
                     **mc_data
                 )
                 await mc.insert()
                 stats["multiple_choices"] += 1
             
-            # 3. Tạo completions
+            # 4. Tạo completions
             for comp_data in mock_data.get("completions", []):
+                audio_key = comp_data.pop("audio_segment_key", None)
+                audio_seg = segment_key_to_doc.get(audio_key) if audio_key else None
                 comp = ListeningCompletionModel(
                     passage_id=passage,
+                    audio_segment_id=audio_seg,
                     **comp_data
                 )
                 await comp.insert()
