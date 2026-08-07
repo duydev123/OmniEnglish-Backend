@@ -45,6 +45,13 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
+from models.Listening import (
+    ListeningPassageModel,
+    ListeningMultipleChoiceModel,
+    ListeningCompletionModel,
+    UserListeningSessionModel,
+    UserDictationSessionModel  # Thêm model mới dành riêng cho Dictation
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,6 +68,12 @@ async def lifespan(app: FastAPI):
             ReadingHeadingMatchingModel,
             ReadingFillBlankModel,
             UserReadingSessionModel,
+            ListeningPassageModel,
+            ListeningMultipleChoiceModel,
+            ListeningCompletionModel,
+            UserListeningSessionModel,
+            UserDictationSessionModel,
+                         
             ReadingTrueFalseNotGivenModel,
             VocabularyCollectionModel,
             WordModel,
