@@ -803,15 +803,19 @@ class VocabService:
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
         prompt = f"""
-        Act as an expert English lexicographer and language tutor. Analyze the following English text and extract up to 15-20 key vocabulary words or phrasal verbs that are most valuable for a Vietnamese English learner to study.
+        Act as an expert English lexicographer and language tutor. Analyze the following text and extract up to 15-20 key vocabulary words or phrasal verbs that appear directly in the text.
 
-        CRITICAL SELECTION RULES:
-        1. Ignore basic/common stop words (e.g. "the", "and", "they", "is", "have", "go", "make", "good").
-        2. Prioritize academic, professional, B1-C2 CEFR level words, useful phrasal verbs, or domain-specific terms.
-        3. Convert verbs to their base/infinitive form (e.g. "analyzed" -> "analyze").
+        CRITICAL SELECTION & EXTRACTION RULES:
+        1. Extract English vocabulary words that appear DIRECTLY in the provided text.
+        2. If the text contains a mix of English and Vietnamese (or other languages), IGNORE the Vietnamese/non-English parts and extract ALL valid English vocabulary words present in the text.
+        3. NEVER translate Vietnamese words into English vocabulary. NEVER generate or invent external English words based on Vietnamese meanings. ONLY extract English words that are explicitly written in the input text itself.
+        4. If the input text contains NO valid English words at all (e.g. 100% Vietnamese or pure gibberish), return an empty JSON array: [].
+        5. Ignore basic/common stop words (e.g. "the", "and", "they", "is", "have", "go", "make", "good", "we", "our", "to").
+        6. Prioritize academic, professional, B1-C2 CEFR level words, useful phrasal verbs, or domain-specific terms found in the text.
+        7. Convert verbs to their base/infinitive form (e.g. "analyzed" -> "analyze").
 
-        For each word, provide:
-        - "word": The base English word or phrasal verb.
+        For each extracted word, provide:
+        - "word": The base English word or phrasal verb EXACTLY as present in the input text.
         - "word_type": One of exactly [noun, verb, adjective, adverb, phrasal verb, idiom, pronoun, preposition, conjunction]
         - "cefr_level": One of [A1, A2, B1, B2, C1, C2]
         - "topic": Appropriate topic category (e.g. Technology, Business, Education, Environment, Daily Life)
@@ -820,7 +824,7 @@ class VocabService:
         - "example_sentence": A clear, natural English example sentence demonstrating the word in context.
 
         OUTPUT FORMAT:
-        Return ONLY a raw valid JSON array of objects. Do NOT use markdown codeblock wrappers like ```json.
+        Return ONLY a raw valid JSON array of objects. Do NOT use markdown codeblock wrappers like ```json. If no valid English words are found in the text, return [].
 
         Text to analyze:
         {payload.raw_text}
@@ -835,7 +839,7 @@ class VocabService:
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
-                        temperature=0.2,
+                        temperature=0.1,
                         max_output_tokens=8192
                     ),
                 )
@@ -868,11 +872,18 @@ class VocabService:
         collection_updated = False 
 
         for item in extracted_data:
-            word_val = item.get("word")
-            if not word_val or word_val in added_words:
+            raw_word = item.get("word")
+            if not raw_word:
+                continue
+            word_val = raw_word.strip().lower()
+            if word_val in added_words:
                 continue
             
             existing_word = await WordModel.find_one(WordModel.word == word_val)
+            if not existing_word:
+                existing_word = await WordModel.find_one({
+                    "word": {"$regex": f"^{re.escape(word_val)}$", "$options": "i"}
+                })
             
             if existing_word:
                 if not getattr(existing_word, 'ipa', None) or not str(existing_word.ipa).strip():
@@ -890,9 +901,9 @@ class VocabService:
                 
                 if not is_in_collection:
                     collection.custom_words.append(existing_word)
-                    collection_updated = True 
+                    collection_updated = True
+                    added_words.add(word_val)
                 
-                added_words.add(word_val)
                 continue
             
             word_type_val = normalize_word_type(item.get("word_type"))
@@ -933,9 +944,16 @@ class VocabService:
             if word and word in highlighted_text:
                 highlighted_text = highlighted_text.replace(word, f"**{word}**")
 
+        if len(added_words) == 0:
+            msg = "Văn bản không chứa từ vựng tiếng Anh hợp lệ nào để trích xuất!"
+            status_str = "warning"
+        else:
+            msg = f"Gemini AI đã phân tích văn bản thành công! (Tạo mới {len(new_words_objects)} từ, thêm tổng cộng {len(added_words)} từ vào bộ)."
+            status_str = "success"
+
         return {
-            "status": "success",
-            "message": f"Gemini AI đã phân tích văn bản thành công! (Tạo mới {len(new_words_objects)} từ, thêm tổng cộng {len(added_words)} từ vào bộ).",
+            "status": status_str,
+            "message": msg,
             "added_count": len(added_words),
             "new_created_count": len(new_words_objects),
             "highlighted_text": highlighted_text,
