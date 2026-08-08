@@ -22,8 +22,6 @@ class TokenResponse(BaseModel):
 
 
 
-
-
 # --- Sub-Schema Cài đặt ---
 class UserSettingsResponse(BaseModel):
     focus_areas: List[str]                                  #[cite: 17]
@@ -47,15 +45,25 @@ class UserStatsResponse(BaseModel):
     avg_speaking_score: float                               #[cite: 17]
     avg_writing_score: float                                #[cite: 17]
 
+# --- Request Social Login (Google / Facebook) ---
+class SocialLoginRequest(BaseModel):
+    provider: str = Field("google", description="google or facebook")
+    email: EmailStr
+    name: Optional[str] = None
+    avatar: Optional[str] = None
+    token: Optional[str] = None
+
 # --- Schema Tổng Profile Trả Về ---
 class UserProfileResponse(BaseModel):
     id: str
-    username: str                                           #[cite: 17]
-    email: EmailStr                                         #[cite: 17]
-    role: str                                               #[cite: 17]
-    avatar: Optional[str] = None                            #[cite: 17]
-    proficiency_level: str                                  #[cite: 17]
-    status: str                                             #[cite: 17]
+    username: str
+    email: EmailStr
+    role: str
+    avatar: Optional[str] = None
+    proficiency_level: str
+    status: str
+    token: Optional[str] = None
+    access_token: Optional[str] = None
     
-    settings: UserSettingsResponse                          #[cite: 17]
-    stats: UserStatsResponse                                #[cite: 17]
+    settings: UserSettingsResponse
+    stats: UserStatsResponse

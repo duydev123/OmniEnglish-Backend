@@ -1,9 +1,10 @@
 import random
 from datetime import datetime, UTC
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Dict, List
 from beanie import PydanticObjectId
 
+from modules.User.user_util import UserUtil
 from models.Reading import (
     ReadingPassageModel,
     ReadingMultipleChoiceModel,
@@ -26,22 +27,38 @@ from .Reading_dto import (
 
 router = APIRouter()
 
+@router.get(path="/passages")
+async def get_all_reading_passages(
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=50)
+):
+    """Lấy danh sách các bài Reading có sẵn (có phân trang) cho Practice Module"""
+    skip = (page - 1) * limit
+    passages = await ReadingPassageModel.find_all().skip(skip).limit(limit).to_list()
+    return [
+        {
+            "id": str(p.id),
+            "title": p.title,
+            "image_url": getattr(p, "image_url", ""),
+            "total_questions": p.total_questions,
+            "time_limit_minutes": p.time_limit_minutes,
+            "difficulty": getattr(p, "difficulty", "Intermediate")
+        }
+        for p in passages
+    ]
+
 @router.get(path="/passages/{passage_id}/start", response_model=ReadingSessionStartResponse)
-async def start_reading_session(passage_id: str):
+async def start_reading_session(
+    passage_id: str,
+    current_user: dict = Depends(UserUtil.Protect)
+):
     # 1. Lấy passage
     passage = await ReadingPassageModel.get(passage_id)
     if not passage:
         raise HTTPException(status_code=404, detail="Passage not found")
     
-    # 2. Tạo session mới (giả định user_id từ auth)
-    # session = UserReadingSessionModel(
-    #     user_id=user_id,
-    #     passage_id=passage,
-    #     total_questions=passage.total_questions
-    # )
-    # await session.insert()
-    # Tạm thời dùng user_id cố định, sau này lấy từ token
-    user_id = "test_user_001"
+    # Lấy user_id thực tế từ JWT Token
+    user_id = current_user.get("_id") or current_user.get("id")
     existing_session = await UserReadingSessionModel.find_one(
         UserReadingSessionModel.user_id == user_id,
         UserReadingSessionModel.passage_id.id == PydanticObjectId(passage_id),
