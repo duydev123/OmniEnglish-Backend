@@ -65,6 +65,16 @@ async def get_official_collections():
         raise HTTPException(status_code=500, detail="Unknown server error")
 
 
+@router.post(path="/collections/seed-ielts-idioms", response_model=VocabularyCollectionResponse)
+async def seed_ielts_idioms_collection():
+    """Seed the 100+ IELTS Idioms Master Collection into MongoDB"""
+    try:
+        return await VocabService.seed_ielts_idioms_collection()
+    except Exception as e:
+        logger.error(f"Error seeding IELTS idioms collection: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post(path="/collections/my-collections", response_model=VocabularyCollectionResponse)
 async def create_my_collection(payload: CreateCollectionRequest):
     """Create a new personal vocabulary collection (is_official = False)"""
