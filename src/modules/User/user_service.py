@@ -9,6 +9,8 @@ from .user_dto import (
     UserProfileResponse,
     UserSettingsResponse,
     UserStatsResponse,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from .user_util import UserUtil
 
@@ -16,16 +18,18 @@ from .user_util import UserUtil
 def build_user_profile_response(user: UserModel, token: Optional[str] = None) -> UserProfileResponse:
     settings = user.settings or UserSettings()
     stats = user.stats or UserStats()
+    created_at_str = user.created_at.strftime("%B %Y") if getattr(user, "created_at", None) else "August 2024"
     return UserProfileResponse(
         id=str(user.id),
         username=user.username,
         email=user.email,
         role=user.role or "user",
         avatar=user.avatar or "",
-        proficiency_level=user.proficiency_level or "B1",
+        proficiency_level=user.proficiency_level or "A1",
         status=user.status or "Active",
         token=token,
         access_token=token,
+        created_at=created_at_str,
         settings=UserSettingsResponse(
             focus_areas=settings.focus_areas,
             daily_word_target=settings.daily_word_target,
@@ -142,6 +146,34 @@ class UserService:
 
         token = UserUtil.CreateToken(user)
         return build_user_profile_response(user, token=token)
+
+    async def change_password(self, current_user: dict, data: ChangePasswordRequest) -> dict:
+        user_id = current_user.get("_id") or current_user.get("id")
+        user = await UserModel.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if user.auth_provider != "local" and not user.hashed_password:
+            raise HTTPException(status_code=400, detail="Tài khoản đăng nhập mạng xã hội không thể đổi mật khẩu trực tiếp.")
+        
+        if not UserUtil.VerifyPassword(data.old_password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Mật khẩu cũ không chính xác!")
+        
+        user.hashed_password = UserUtil.HashPassword(data.new_password)
+        await user.save()
+        return {"message": "Đổi mật khẩu thành công!"}
+
+    async def update_profile(self, current_user: dict, data: UpdateProfileRequest) -> UserProfileResponse:
+        user_id = current_user.get("_id") or current_user.get("id")
+        user = await UserModel.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        if data.avatar is not None:
+            user.avatar = data.avatar
+            await user.save()
+            
+        return build_user_profile_response(user)
 
     # --- Alias giữ tương thích với tên hàm cũ ---
     SignIn = login

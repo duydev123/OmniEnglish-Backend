@@ -20,7 +20,6 @@ from .Reading_dto import (
     FillBlankResponse,
     TrueFalseNotGivenResponse,
     ReadingDraftRequest,
-    ReadingSubmitRequest,
     ReadingSubmitResponse,
     QuestionResult
 )
