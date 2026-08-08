@@ -28,7 +28,7 @@ from modules.Vocabulary.vocab_controller import (
     format_collection_response,
     get_current_user_id,
 )
-from modules.Vocabulary.vocab_service import VocabService, fetch_ipa_for_word
+from modules.Vocabulary.vocab_service import VocabService, fetch_ipa_for_word, fetch_word_details
 from modules.Vocabulary.Vocabulary_dto import (
     PasteTextRequest,
     VocabularyCollectionResponse,
@@ -1312,6 +1312,233 @@ class TestVocabSystemErrorHandling:
             elif method == "DELETE":
                 response = client.delete(route)
 
+
             assert response.status_code == 500
             assert "detail" in response.json()
 
+
+# =====================================================================
+# SECTION 7: EDGE CASES & REGRESSION TESTS
+# =====================================================================
+
+class TestVocabEdgeCasesAndRegressions:
+    """
+    Edge case và regression tests bao gồm:
+    - Boundary: paste text đúng 5000 ký tự phải được chấp nhận
+    - Regression: từ đã có trong collection không được tính vào added_count
+    - fetch_ipa_for_word: cụm từ nhiều chữ trả 404 từ dictionary
+    - format_collection_response: link bị hỏng (fetch trả None) phải được bỏ qua
+    - update_word_status: collection không tồn tại → 404
+    - bulk_add_words: danh sách rỗng → success với added_count=0
+    """
+
+    @patch("modules.Vocabulary.vocab_service.genai.Client")
+    @patch.object(WordModel, "find_one", new_callable=AsyncMock)
+    @patch.object(WordModel, "insert", new_callable=AsyncMock)
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_paste_text_exactly_5000_chars_is_accepted(
+        self, mock_col_get, mock_word_insert, mock_word_find_one, mock_genai_client
+    ):
+        """Boundary: text đúng 5000 ký tự KHÔNG được raise 400 (chỉ > 5000 mới bị)."""
+        async def run_test():
+            mock_col = MagicMock()
+            mock_col.is_official = False
+            mock_col.custom_words = []
+            mock_col.save = AsyncMock()
+            mock_col_get.return_value = mock_col
+            mock_word_find_one.return_value = None
+
+            mock_response = MagicMock()
+            mock_response.text = json.dumps([])
+            mock_client_instance = MagicMock()
+            mock_client_instance.models.generate_content.return_value = mock_response
+            mock_genai_client.return_value = mock_client_instance
+
+            exact_text = "a" * 5000
+            payload = PasteTextRequest(raw_text=exact_text)
+            res = await VocabService.process_and_add_pasted_text_with_gemini(
+                "507f1f77bcf86cd799439011", payload
+            )
+            # Không raise 400, trả về warning do không có từ nào được trích xuất
+            assert res["status"] == "warning"
+
+        asyncio.run(run_test())
+
+    @patch("modules.Vocabulary.vocab_service.genai.Client")
+    @patch.object(WordModel, "find_one", new_callable=AsyncMock)
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_paste_text_word_already_in_collection_not_counted_in_added_count(
+        self, mock_col_get, mock_word_find_one, mock_genai_client
+    ):
+        """
+        Regression: từ đã có trong collection không được tính vào added_count.
+        Bug fix: added_words.add() phải nằm trong block `if not is_in_collection`.
+        """
+        async def run_test():
+            existing_word = MagicMock()
+            existing_word.id = PydanticObjectId("507f1f77bcf86cd799439022")
+            existing_word.ipa = "/ˈæp.əl/"
+            mock_word_find_one.return_value = existing_word
+
+            # Link trong collection đã trỏ đến existing_word (is_in_collection = True)
+            existing_link = MagicMock()
+            existing_link.ref = MagicMock()
+            existing_link.ref.id = existing_word.id
+
+            mock_col = MagicMock()
+            mock_col.is_official = False
+            mock_col.custom_words = [existing_link]
+            mock_col.save = AsyncMock()
+            mock_col_get.return_value = mock_col
+
+            mock_response = MagicMock()
+            mock_response.text = json.dumps([{
+                "word": "apple",
+                "word_type": "noun",
+                "cefr_level": "A1",
+                "topic": "General",
+                "meaning": "quả táo",
+                "ipa": "/ˈæp.əl/",
+                "example_sentence": "An apple a day."
+            }])
+            mock_client_instance = MagicMock()
+            mock_client_instance.models.generate_content.return_value = mock_response
+            mock_genai_client.return_value = mock_client_instance
+
+            payload = PasteTextRequest(raw_text="An apple a day keeps the doctor away.")
+            res = await VocabService.process_and_add_pasted_text_with_gemini(
+                "507f1f77bcf86cd799439011", payload
+            )
+            # Từ đã có trong collection → added_count phải là 0 (regression cho bug fix)
+            assert res["added_count"] == 0
+
+        asyncio.run(run_test())
+
+    @patch("modules.Vocabulary.vocab_service.httpx.AsyncClient.get")
+    def test_fetch_ipa_multi_word_phrase_returns_empty_on_404(self, mock_httpx_get):
+        """Cụm từ nhiều chữ (vd 'give up') bị 404 từ dictionary phải trả về chuỗi rỗng."""
+        async def run_test():
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Not Found", request=MagicMock(), response=mock_resp
+            )
+            mock_httpx_get.return_value = mock_resp
+
+            ipa = await fetch_ipa_for_word("give up")
+            assert ipa == ""
+
+        asyncio.run(run_test())
+
+    def test_format_collection_response_skips_broken_links(self):
+        """format_collection_response phải bỏ qua link hỏng (fetch trả None), không crash."""
+        async def run_test():
+            mock_collection = MagicMock()
+            mock_collection.id = PydanticObjectId("507f1f77bcf86cd799439011")
+            mock_collection.title = "Test Collection"
+            mock_collection.description = ""
+            mock_collection.topic = "General"
+            mock_collection.language = "en-US"
+            mock_collection.is_official = False
+            mock_collection.total_learners = 1
+            mock_collection.accuracy_percentage = 0.0
+            mock_collection.study_time_seconds = 0
+
+            # Link bị hỏng → fetch trả None
+            broken_link = MagicMock()
+            broken_link.fetch = AsyncMock(return_value=None)
+
+            # Link hợp lệ
+            valid_word = MagicMock()
+            valid_word.id = PydanticObjectId("507f1f77bcf86cd799439022")
+            valid_word.word = "resilience"
+            valid_word.word_type = "noun"
+            valid_word.meaning = "sự kiên cường"
+            valid_word.ipa = "/rɪˈzɪl.jəns/"
+            valid_word.example_sentence = ""
+            valid_word.image_url = ""
+            valid_link = MagicMock()
+            valid_link.fetch = AsyncMock(return_value=valid_word)
+
+            mock_collection.custom_words = [broken_link, valid_link]
+            mock_collection.words = []
+
+            res = await format_collection_response(mock_collection)
+            assert isinstance(res, VocabularyCollectionResponse)
+            # Chỉ từ hợp lệ được giữ lại; broken link bị bỏ qua
+            assert len(res.words_list) == 1
+            assert res.words_list[0].word == "resilience"
+
+        asyncio.run(run_test())
+
+    @patch.object(UserProgressModel, "find_one", new_callable=AsyncMock)
+    @patch.object(UserWordStatusModel, "find")
+    @patch.object(UserWordStatusModel, "find_one", new_callable=AsyncMock)
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_update_word_status_collection_not_found_raises_404(
+        self, mock_col_get, mock_status_find_one, mock_status_find, mock_progress_find_one
+    ):
+        """update_word_status phải raise 404 khi collection không tồn tại."""
+        async def run_test():
+            mock_col_get.return_value = None
+            payload = UpdateWordStatusRequest(
+                collection_id="507f1f77bcf86cd799439011",
+                word_id="w1",
+                status="MASTERED"
+            )
+            with pytest.raises(HTTPException) as exc:
+                await VocabService.update_word_status(payload)
+            assert exc.value.status_code == 404
+
+        asyncio.run(run_test())
+
+    @patch.object(WordModel, "insert", new_callable=AsyncMock)
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_bulk_add_empty_word_list_returns_success_with_zero_count(
+        self, mock_col_get, mock_word_insert
+    ):
+        """bulk_add_words với danh sách rỗng phải thành công mà không crash, added_count=0."""
+        async def run_test():
+            mock_col = MagicMock()
+            mock_col.is_official = False
+            mock_col.custom_words = []
+            mock_col.save = AsyncMock()
+            mock_col_get.return_value = mock_col
+
+            payload = BulkAddWordsRequest(words=[])
+            res = await VocabService.bulk_add_words_to_collection(
+                "507f1f77bcf86cd799439011", payload
+            )
+            assert res["status"] == "success"
+            assert res["added_count"] == 0
+
+        asyncio.run(run_test())
+
+    def test_normalize_word_type_handles_enum_and_prefixes(self):
+        """normalize_word_type phải chuyển đổi đúng đối tượng WordType Enum và tiền tố 'WordType.'."""
+        assert normalize_word_type(WordType.NOUN) == "noun"
+        assert normalize_word_type(WordType.VERB) == "verb"
+        assert normalize_word_type("WordType.ADJECTIVE") == "adjective"
+        assert normalize_word_type("WORDTYPE.IDIOM") == "idiom"
+        assert normalize_word_type("unknown_type_xyz") == "noun"
+
+    @patch("modules.Vocabulary.vocab_service.httpx.AsyncClient.get")
+    def test_fetch_word_details_invalid_nonsense_multi_word_falls_back_to_noun(self, mock_get):
+        """Cụm từ vô nghĩa/từ chế (vd 'skibidi dop dop yet yet' hay 'khanh ngu') phải về word_type='noun' và ipa=''."""
+        async def run_test():
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            mock_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+                "Not Found", request=MagicMock(), response=mock_resp
+            )
+            mock_get.return_value = mock_resp
+
+            res = await fetch_word_details("skibidi dop dop yet yet")
+            assert res["word_type"] == "noun"
+            assert res["ipa"] == ""
+
+            res2 = await fetch_word_details("khanh ngu")
+            assert res2["word_type"] == "noun"
+            assert res2["ipa"] == ""
+
+        asyncio.run(run_test())

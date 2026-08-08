@@ -3,11 +3,12 @@ import re
 import json
 import time
 import logging
+import asyncio
 import unicodedata
 import urllib.request
 import urllib.parse
 from datetime import UTC, datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Any
 
 import httpx
 from beanie import PydanticObjectId
@@ -44,16 +45,23 @@ MAX_RECURSION_DEPTH = 2
 
 
 def normalize_text(text: str) -> str:
-    """Normalize Unicode characters (NFKC) and strip whitespace."""
+    """Normalize Unicode characters (NFKC), curly quotes, and strip whitespace."""
     if not text:
         return ""
-    return unicodedata.normalize('NFKC', text).strip()
+    normalized = unicodedata.normalize('NFKC', text)
+    normalized = re.sub(r"[’`‘ʼ\u2018\u2019\u02bc]", "'", normalized)
+    return normalized.strip()
 
 
-def normalize_word_type(val: Optional[str]) -> str:
+def normalize_word_type(val: Any) -> str:
     if not val:
         return WordType.NOUN.value
-    v = val.lower().strip()
+    if isinstance(val, WordType):
+        return val.value
+    val_str = str(val).strip()
+    if val_str.lower().startswith("wordtype."):
+        val_str = val_str[9:]
+    v = val_str.lower().strip()
     valid_map = {e.value: e.value for e in WordType}
     if v in valid_map:
         return valid_map[v]
@@ -132,10 +140,29 @@ def is_valid_ipa(text: str) -> bool:
     for f in forbidden:
         if f in lower:
             return False
-    # English apostrophes or contractions (e.g., Let's) are not valid IPA symbols
-    if "'" in text or "’" in text:
-        return False
     return True
+
+
+def is_nonsense_or_test_word(word: str, clean_word: str) -> bool:
+    """Filter out non-standard test strings like 'aa', 'bb', 'ccc', 'asdfghjk', 'qwerty'."""
+    clean_lower = clean_word.lower().strip()
+    if not clean_lower:
+        return True
+
+    # Single letter words except 'a' and 'i'
+    if len(clean_lower) == 1 and clean_lower not in ["a", "i"]:
+        return True
+
+    # Repeated identical letters (e.g., aa, bb, ccc, dddd)
+    if len(set(clean_lower)) == 1 and clean_lower not in ["a", "i"]:
+        return True
+
+    # Keyboard mashing
+    keyboard_mash = {"asdf", "qwerty", "zxcv", "asdfghjk", "qwertyuiop", "zxcvbnm", "lmao", "xyz"}
+    if clean_lower in keyboard_mash:
+        return True
+
+    return False
 
 
 def is_abbreviation_or_initialism(word: str, clean_word: str) -> bool:
@@ -143,6 +170,9 @@ def is_abbreviation_or_initialism(word: str, clean_word: str) -> bool:
     Check if a word is purely an acronym, initialism, or abbreviation (e.g., ABG, ABC, ATM, CEO, LOL, OMG).
     Case-insensitive checking to block both 'abc' and 'ABC'.
     """
+    if is_nonsense_or_test_word(word, clean_word):
+        return True
+
     if not clean_word or len(clean_word) > 10:
         return False
 
@@ -165,24 +195,6 @@ def is_abbreviation_or_initialism(word: str, clean_word: str) -> bool:
     # Block uppercase short acronyms
     if word.strip().isupper() and len(word.strip()) <= 6 and clean_lower not in ["a", "i"]:
         return True
-
-    # Datamuse initialism definition check
-    try:
-        url = f"https://api.datamuse.com/words?sp={urllib.parse.quote(clean_lower)}&md=d"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            for item in data:
-                if item.get('word', '') == clean_lower and 'defs' in item:
-                    defs = item['defs']
-                    init_cnt = sum(
-                        1 for d in defs 
-                        if any(k in d.lower() for k in ['initialism of', 'abbreviation of', 'acronym of', 'short for', 'ellipsis of'])
-                    )
-                    if len(defs) > 0 and (init_cnt / len(defs)) >= 0.5:
-                        return True
-    except Exception:
-        pass
 
     return False
 
@@ -258,7 +270,132 @@ async def _fetch_from_datamuse(clean_word: str, client: httpx.AsyncClient) -> st
     return ""
 
 
+PHRASAL_PARTICLES = {
+    "about", "above", "across", "after", "against", "ahead", "along", "around",
+    "apart", "aside", "away", "back", "behind", "below", "by", "down", "forward",
+    "from", "in", "into", "off", "on", "onto", "out", "over", "through", "to",
+    "together", "under", "up", "upon", "with", "without"
+}
+
+KNOWN_VERB_ROOTS = {
+    "add", "agree", "allow", "apply", "ask", "back", "belong", "blow", "break",
+    "bring", "call", "calm", "care", "carry", "catch", "cater", "check", "cheer",
+    "chip", "clean", "come", "consist", "count", "cross", "cut", "deal", "depend",
+    "do", "dress", "drop", "eat", "end", "fall", "figure", "fill", "find", "focus",
+    "get", "give", "go", "grow", "hand", "hang", "hold", "keep", "lay", "lead",
+    "let", "listen", "log", "look", "make", "mix", "move", "pass", "pay", "pick",
+    "point", "pull", "push", "put", "refer", "rely", "result", "run", "send",
+    "set", "shop", "show", "sit", "sleep", "sort", "stand", "stem", "step",
+    "stick", "switch", "take", "tear", "think", "throw", "try", "turn", "use",
+    "wait", "wake", "walk", "warm", "wear", "work"
+}
+
+COMMON_IDIOM_INDICATOR_WORDS = {
+    "one's", "someone's", "hair", "leg", "ice", "bucket", "bullet", "beans",
+    "sack", "towel", "oil", "bell", "chin", "mind", "heart", "head", "foot",
+    "face", "eye", "ear", "hand", "finger", "arm", "back", "tongue", "mouth",
+    "blood", "bone", "skin", "boat", "bridge", "bush", "coin", "tree", "feather",
+    "bird", "dog", "cat", "horse", "fish", "apple", "pie", "cake", "egg", "salt",
+    "tea", "coffee", "water", "fire", "wind", "sun", "moon", "star", "sky",
+    "cloud", "ground", "stone", "rock", "wall", "door", "corner", "road", "street",
+    "path", "train", "bus", "ship", "car", "truck", "plane", "money", "penny",
+    "dollar", "bill", "ticket", "card", "book", "books", "page", "line", "lines",
+    "rule", "law", "game", "sport", "music", "song", "story", "name", "clock",
+    "hour", "night", "light", "dark", "shadow", "rain", "snow", "storm", "wood",
+    "forest", "field", "farm", "garden", "flower", "leaf", "root", "fruit", "nut",
+    "seed", "grain", "milk", "butter", "bread", "meat", "soup", "sugar", "pepper",
+    "wine", "beer", "glass", "cup", "plate", "dish", "bowl", "spoon", "fork",
+    "knife", "pen", "pencil", "paper", "letter", "mail", "key", "lock", "ring",
+    "watch", "shoe", "boot", "sock", "hat", "cap", "coat", "shirt", "dress",
+    "skirt", "pant", "pocket", "bag", "box", "bed", "table", "chair", "desk",
+    "room", "house", "home", "roof", "floor", "window", "gate", "town", "city",
+    "country", "world", "colors", "colours", "class", "learner", "nighter", "pet",
+    "halves", "pain", "gain", "exam", "exams", "sight", "feet", "suitcase",
+    "scenery", "jackpot", "journey", "bug", "nowhere", "dumps", "fence", "cents",
+    "steam", "joy", "living", "meet", "ears", "eggs", "basket", "candle",
+    "board", "grindstone", "ladder", "bargain", "bargains", "drain", "glove",
+    "impulse", "basement", "therapy", "brain"
+}
+
+KNOWN_IELTS_IDIOMS = {
+    # Work & General
+    "make a living", "make ends meet", "call it a day", "call it a night", "call it a day/night",
+    "be cut out for", "wet behind the ears", "put all one's eggs in one basket",
+    "put all your eggs in one basket", "put all ones eggs in one basket", "beat the clock",
+    "burn the candle at both ends", "back to the drawing board", "learn the ropes",
+    "keep your nose to the grindstone", "keep one's nose to the grindstone",
+    "climb the corporate ladder", "think on your feet", "think on one's feet",
+    "on the same page", "get the ball rolling",
+
+    # Shopping
+    "hunt for bargains", "go window-shopping", "go window shopping", "cost an arm and a leg",
+    "take back", "pour money down the drain", "fit like a glove", "the in thing",
+    "shop till you drop", "buy on impulse", "pay through the nose", "in the red",
+    "in the black", "bargain basement", "retail therapy", "splash out on",
+
+    # Travel
+    "let one's hair down", "let your hair down", "let ones hair down", "give someone a lift",
+    "give somebody a lift", "hit the road", "at the crack of dawn", "off the beaten track",
+    "live out of a suitcase", "have itchy feet", "get itchy feet", "have/get itchy feet",
+    "travel light", "a change of scenery", "break the journey", "catch the travel bug",
+    "hit the jackpot", "in the middle of nowhere", "pack in",
+
+    # Feelings & Emotions
+    "love at first sight", "head over heels in love", "on cloud nine", "break someone's heart",
+    "break somebody's heart", "wear your heart on your sleeve", "wear one's heart on your sleeve",
+    "a long face", "in someone's shoes", "in somebody's shoes", "green with envy",
+    "down in the dumps", "sit on the fence", "feel like two cents", "be the apple of one's eye",
+    "be the apple of someone's eye", "blow off steam", "keep your chin up", "keep one's chin up",
+    "jump for joy",
+
+    # Education & Study
+    "pass with flying colors", "pass with flying colours", "learn by heart", "rack one's brain",
+    "rack your brain", "no pain no gain", "no pain, no gain", "not do things by halves",
+    "think outside the box", "brush up on", "teacher's pet", "hit the books",
+    "pull an all-nighter", "cram for", "cram for an exam", "a quick learner",
+    "read between the lines", "daydream in class", "top of the class"
+}
+
+PLACEHOLDER_WORDS = {
+    "somebody", "something", "someplace", "some", "someone", "place", "oneself",
+    "sb", "sth", "or", "and", "one's", "someone's", "your", "my", "his", "her",
+    "their", "our", "its"
+}
+
+
+def is_phrasal_verb_phrase(clean_word: str) -> bool:
+    """Detect if a multi-word phrase is a Phrasal Verb vs Idiom."""
+    lower_str = clean_word.lower()
+    clean_norm = re.sub(r'[^\w\s]', '', lower_str).strip()
+
+    if lower_str in KNOWN_IELTS_IDIOMS or clean_norm in KNOWN_IELTS_IDIOMS:
+        return False
+
+    if "'s" in lower_str or "one's" in lower_str or "someone's" in lower_str:
+        return False
+
+    raw_tokens = re.sub(r'[/\\,\-\.\?]', ' ', lower_str).split()
+
+    if any(t in COMMON_IDIOM_INDICATOR_WORDS for t in raw_tokens):
+        return False
+
+    tokens = [t for t in raw_tokens if t not in PLACEHOLDER_WORDS]
+    if not tokens or len(tokens) < 2:
+        return False
+
+    first_token = tokens[0]
+    has_particle = any(t in PHRASAL_PARTICLES for t in tokens[1:])
+
+    if has_particle:
+        if first_token in KNOWN_VERB_ROOTS:
+            return True
+        if any(first_token.endswith(ext) for ext in ["ing", "ed", "es", "s"]):
+            return True
+    return False
+
+
 _WORD_TYPE_CACHE: dict[str, str] = {}
+_DETAILS_CACHE: dict[str, dict] = {}
 
 
 async def fetch_word_type_for_word(word: str) -> str:
@@ -271,18 +408,24 @@ async def fetch_word_type_for_word(word: str) -> str:
 
     clean_word = normalize_text(word).lower()
     if clean_word in _WORD_TYPE_CACHE:
-        return _WORD_TYPE_CACHE[clean_word]
+        val = _WORD_TYPE_CACHE[clean_word]
+        if val and val != WordType.NOUN.value:
+            return val
 
-    # Handle multi-word phrases and idioms
+    # Handle multi-word phrases and idioms directly
     if ' ' in clean_word:
-        first_word = clean_word.split()[0]
-        first_word_type = await fetch_word_type_for_word(first_word)
-        if first_word_type == WordType.VERB.value:
+        clean_no_parentheses = re.sub(r'\(.*?\)', '', clean_word).strip()
+        if is_phrasal_verb_phrase(clean_no_parentheses):
             res_type = WordType.PHRASAL_VERB.value
         else:
             res_type = WordType.IDIOM.value
         _WORD_TYPE_CACHE[clean_word] = res_type
         return res_type
+
+    # Single-word verb root override
+    if clean_word in KNOWN_VERB_ROOTS:
+        _WORD_TYPE_CACHE[clean_word] = WordType.VERB.value
+        return WordType.VERB.value
 
     # Async HTTP Lookup via Free Dictionary API
     try:
@@ -311,12 +454,9 @@ async def fetch_word_type_for_word(word: str) -> str:
     return WordType.NOUN.value
 
 
-_DETAILS_CACHE: dict[str, dict] = {}
-
-
 async def fetch_word_details(word: str) -> dict:
     """
-    Fetch IPA and word_type for a word.
+    Fetch IPA and word_type for a word or phrase.
     Returns: {"word": word, "ipa": ipa, "word_type": word_type}
     """
     if not word or not word.strip():
@@ -324,11 +464,19 @@ async def fetch_word_details(word: str) -> dict:
 
     clean_word = normalize_text(word).lower()
     if clean_word in _DETAILS_CACHE:
-        return _DETAILS_CACHE[clean_word]
+        cached = _DETAILS_CACHE[clean_word]
+        if cached.get("word_type") and cached.get("word_type") != WordType.NOUN.value and cached.get("ipa"):
+            return cached
 
     ipa = await fetch_ipa_for_word(word)
-    if not ipa:
-        res = {"word": word, "ipa": "", "word_type": WordType.NOUN.value}
+    
+    # If the word or multi-word phrase has NO valid IPA (e.g. non-English text / typos like 'khanh ngu'), default to noun
+    if not ipa or not ipa.strip() or ipa.startswith("No IPA"):
+        res = {
+            "word": word,
+            "ipa": "",
+            "word_type": WordType.NOUN.value,
+        }
         _DETAILS_CACHE[clean_word] = res
         return res
 
@@ -336,62 +484,99 @@ async def fetch_word_details(word: str) -> dict:
 
     res = {
         "word": word,
-        "ipa": ipa,
-        "word_type": word_type,
+        "ipa": ipa or "",
+        "word_type": word_type or WordType.NOUN.value,
     }
     _DETAILS_CACHE[clean_word] = res
     return res
 
 
-
-async def _fetch_from_gemini(clean_word: str) -> str:
-    """Fetch IPA from Gemini AI for phrasal verbs, idioms, and complex terms."""
-    try:
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            return ""
-        client = genai.Client(api_key=api_key)
-        model_name = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-        is_phrase = ' ' in clean_word
-        term_type = "phrase, phrasal verb, or idiom" if is_phrase else "word"
-        prompt = f"Provide ONLY the standard IPA phonetic transcription with slashes for the valid English {term_type} '{clean_word}'. Format: /IPA/. Do NOT write any explanations, labels, or extra words. If the term is invalid or gibberish, return NOTHING."
-        response = client.models.generate_content(
-            model=model_name,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                max_output_tokens=150
-            ),
-        )
-        if response and response.text:
-            raw_text = response.text.strip()
-            all_matches = re.findall(r'/[^/]+/', raw_text)
-            if all_matches:
-                cleaned_parts = [m.strip('/').strip() for m in all_matches if m.strip('/').strip()]
-                ipa_str = "/" + " ".join(cleaned_parts) + "/"
-            else:
-                ipa_str = raw_text
-
-            if is_valid_ipa(ipa_str):
-                if not ipa_str.startswith("/"):
-                    ipa_str = "/" + ipa_str
-                if not ipa_str.endswith("/"):
-                    ipa_str = ipa_str + "/"
-                return ipa_str
-    except Exception as e:
-        logger.warning(f"Gemini IPA lookup error for '{clean_word}': {e}")
-    return ""
+COMMON_PREPOSITION_IPAS = {
+    "a": "/ə/",
+    "an": "/æn/",
+    "the": "/ðə/",
+    "of": "/əv/",
+    "from": "/frɒm/",
+    "to": "/tuː/",
+    "for": "/fɔːr/",
+    "in": "/ɪn/",
+    "on": "/ɒn/",
+    "at": "/æt/",
+    "by": "/baɪ/",
+    "with": "/wɪð/",
+    "about": "/əˈbaʊt/",
+    "out": "/aʊt/",
+    "up": "/ʌp/",
+    "down": "/daʊn/",
+    "off": "/ɒf/",
+    "over": "/ˈoʊvər/",
+    "under": "/ˈʌndər/",
+    "away": "/əˈweɪ/",
+    "back": "/bæk/",
+    "into": "/ˈɪntuː/",
+    "onto": "/ˈɒntuː/",
+    "upon": "/əˈpɒn/",
+    "as": "/æz/",
+    "than": "/ðæn/",
+    "like": "/laɪk/",
+    "through": "/θruː/",
+    "across": "/əˈkrɒs/",
+    "against": "/əˈɡɛnst/",
+    "along": "/əˈlɒŋ/",
+    "around": "/əˈraʊnd/",
+    "behind": "/bɪˈhaɪnd/",
+    "between": "/bɪˈtwiːn/",
+    "beyond": "/bɪˈjɒnd/",
+    "one": "/wʌn/",
+    "one's": "/wʌnz/",
+    "ones": "/wʌnz/",
+    "your": "/jɔːr/",
+    "my": "/maɪ/",
+    "his": "/hɪz/",
+    "her": "/hɜːr/",
+    "their": "/ðeər/",
+    "our": "/aʊər/",
+    "its": "/ɪts/",
+    "someone": "/ˈsʌmwʌn/",
+    "someone's": "/ˈsʌmwʌnz/",
+    "somebody": "/ˈsʌmbədi/",
+    "somebody's": "/ˈsʌmbədiz/",
+    "something": "/ˈsʌmθɪŋ/",
+    "or": "/ɔːr/",
+    "and": "/ænd/"
+}
 
 
 async def _process_phrase(clean_word: str, depth: int) -> str:
-    """Helper to process multi-word phrases/idioms asynchronously with recursion guard."""
-    words = clean_word.split()
+    """Helper to process multi-word phrases/idioms asynchronously with full IPA for all words."""
+    clean_base = re.sub(r'[\(\)\[\]/\\,\-\.\?]', ' ', clean_word.lower())
+    words = clean_base.split()
+
     phrase_ipas = []
+    has_custom_words = False
+    custom_words_failed = False
+
     for w in words:
-        sub_ipa = await fetch_ipa_for_word(w, depth=depth + 1)
-        if not sub_ipa:
-            return ""
-        phrase_ipas.append(sub_ipa.strip('/'))
+        w_clean = re.sub(r"[^\w']", "", w)
+        if not w_clean:
+            continue
+        w_lower = w_clean.lower()
+        if w_lower in COMMON_PREPOSITION_IPAS:
+            sub_ipa = COMMON_PREPOSITION_IPAS[w_lower]
+        else:
+            has_custom_words = True
+            sub_ipa = await fetch_ipa_for_word(w_clean, depth=depth + 1)
+            if not sub_ipa or sub_ipa.startswith('No IPA'):
+                custom_words_failed = True
+
+        if sub_ipa:
+            clean_sub = sub_ipa.strip('/ ').strip()
+            if clean_sub and not clean_sub.startswith('No IPA'):
+                phrase_ipas.append(clean_sub)
+
+    if has_custom_words and custom_words_failed:
+        return ""
+
     if phrase_ipas:
         return '/' + ' '.join(phrase_ipas) + '/'
     return ""
@@ -412,7 +597,7 @@ async def fetch_ipa_for_word(word: str, depth: int = 0) -> str:
     clean_word = normalize_text(word).lower()
 
     # 0. Fast In-Memory Cache Lookup (0ms response)
-    if clean_word in _IPA_CACHE:
+    if clean_word in _IPA_CACHE and _IPA_CACHE[clean_word]:
         logger.debug(f"Cache hit for word '{clean_word}' -> '{_IPA_CACHE[clean_word]}'")
         return _IPA_CACHE[clean_word]
 
@@ -447,79 +632,112 @@ async def fetch_ipa_for_word(word: str, depth: int = 0) -> str:
             _IPA_CACHE[clean_word] = ipa
             return ipa
 
-        # 3. AI Fallback: Gemini AI (for complex terms or missing entries)
-        ipa = await _fetch_from_gemini(clean_word)
-        if ipa:
-            _IPA_CACHE[clean_word] = ipa
-            return ipa
-
     _IPA_CACHE[clean_word] = ""
     return ""
 
 
-
-
 async def format_collection_response(collection: VocabularyCollectionModel) -> VocabularyCollectionResponse:
-    words_list = []
+    col_str_id = str(getattr(collection, 'id', ''))
     
+    word_ids = []
+    direct_words = []
+
     if hasattr(collection, 'custom_words') and collection.custom_words:
         for link in collection.custom_words:
-            word = await link.fetch() if hasattr(link, 'fetch') else link 
-            if word:
-                ipa_val = getattr(word, "ipa", "")
-                if not ipa_val or not str(ipa_val).strip():
-                    ipa_val = await fetch_ipa_for_word(word.word)
-                    if ipa_val:
-                        word.ipa = ipa_val
-                        try:
-                            await word.save()
-                        except Exception:
-                            pass
+            if hasattr(link, 'ref') and hasattr(link.ref, 'id'):
+                word_ids.append(link.ref.id)
+            elif hasattr(link, 'id') and not hasattr(link, 'fetch'):
+                word_ids.append(link.id)
+            elif getattr(link, 'word', None):
+                direct_words.append(link)
 
-                words_list.append({
-                    "id": str(word.id),
-                    "word": word.word,
-                    "word_type": word.word_type,
-                    "meaning": word.meaning,
-                    "ipa": ipa_val or "",
-                    "example_sentence": getattr(word, "example_sentence", ""),
-                    "image_url": getattr(word, "image_url", "")
-                })
-                
+    query_conditions = []
+    if word_ids:
+        query_conditions.append({"_id": {"$in": word_ids}})
+    if getattr(collection, 'title', None):
+        query_conditions.append({"collection_id": collection.title})
+    if col_str_id and col_str_id != "None":
+        query_conditions.append({"collection_id": col_str_id})
+
+    words_docs = []
+    if query_conditions:
+        try:
+            words_docs = await WordModel.find({"$or": query_conditions}).to_list()
+        except Exception:
+            words_docs = []
+
+    # If words_docs is empty (e.g. unit test mocked DB), resolve custom_words via link.fetch()
+    if not words_docs and not direct_words and hasattr(collection, 'custom_words') and collection.custom_words:
+        for link in collection.custom_words:
+            try:
+                w = await link.fetch() if hasattr(link, 'fetch') else link
+                if w and getattr(w, 'word', None):
+                    direct_words.append(w)
+            except Exception:
+                pass
+
+    all_words = direct_words + words_docs
+    words_list = []
+    seen_keys = set()
+
+    for w in all_words:
+        w_id = str(getattr(w, 'id', ''))
+        w_name = str(getattr(w, 'word', ''))
+        if not w_name or w_name in seen_keys:
+            continue
+        seen_keys.add(w_name)
+        words_list.append({
+            "id": w_id or w_name,
+            "word": w_name,
+            "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
+            "meaning": str(getattr(w, 'meaning', '') or ''),
+            "ipa": str(getattr(w, 'ipa', '') or ''),
+            "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
+            "image_url": str(getattr(w, 'image_url', '') or '')
+        })
+
     if hasattr(collection, 'words') and collection.words:
-        for link in collection.words:
-            word = await link.fetch() if hasattr(link, 'fetch') else link
-            if word:
-                ipa_val = getattr(word, "ipa", "")
-                if not ipa_val or not str(ipa_val).strip():
-                    ipa_val = await fetch_ipa_for_word(word.word)
-                    if ipa_val:
-                        word.ipa = ipa_val
-                        try:
-                            await word.save()
-                        except Exception:
-                            pass
-
-                words_list.append({
-                    "id": str(word.id),
-                    "word": word.word,
-                    "word_type": word.word_type,
-                    "meaning": word.meaning,
-                    "ipa": ipa_val or "",
-                    "example_sentence": getattr(word, "example_sentence", ""),
-                    "image_url": getattr(word, "image_url", "")
-                })
+        for w_item in collection.words:
+            if isinstance(w_item, str):
+                if w_item not in seen_keys:
+                    seen_keys.add(w_item)
+                    words_list.append({
+                        "id": w_item,
+                        "word": w_item,
+                        "word_type": "idiom" if ' ' in w_item else "noun",
+                        "meaning": "",
+                        "ipa": "",
+                        "example_sentence": "",
+                        "image_url": ""
+                    })
+            else:
+                try:
+                    w = await w_item.fetch() if hasattr(w_item, 'fetch') else w_item
+                    w_name = str(getattr(w, 'word', '')) if w else ''
+                    if w and w_name and w_name not in seen_keys:
+                        seen_keys.add(w_name)
+                        words_list.append({
+                            "id": str(getattr(w, 'id', '')),
+                            "word": w_name,
+                            "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
+                            "meaning": str(getattr(w, 'meaning', '') or ''),
+                            "ipa": str(getattr(w, 'ipa', '') or ''),
+                            "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
+                            "image_url": str(getattr(w, 'image_url', '') or '')
+                        })
+                except Exception:
+                    pass
 
     return VocabularyCollectionResponse(
-        id=str(collection.id),
-        title=collection.title,
-        description=collection.description,
-        topic=collection.topic,
-        language=collection.language,
-        is_official=collection.is_official,
-        total_learners=collection.total_learners,
-        accuracy_percentage=getattr(collection, 'accuracy_percentage', 0.0),
-        study_time_seconds=getattr(collection, 'study_time_seconds', 0),
+        id=col_str_id,
+        title=str(getattr(collection, 'title', '')),
+        description=str(getattr(collection, 'description', '') or ""),
+        topic=str(getattr(collection, 'topic', '') or ""),
+        language=str(getattr(collection, 'language', 'en-US') or "en-US"),
+        is_official=bool(getattr(collection, 'is_official', False)),
+        total_learners=int(getattr(collection, 'total_learners', 0) or 0),
+        accuracy_percentage=float(getattr(collection, 'accuracy_percentage', 0.0) or 0.0),
+        study_time_seconds=int(getattr(collection, 'study_time_seconds', 0) or 0),
         words_list=words_list
     )
 
@@ -1135,3 +1353,124 @@ class VocabService:
             "status": "success", 
             "message": "Vocabulary collection and associated data deleted successfully!"
         }
+
+    @staticmethod
+    async def seed_ielts_idioms_collection() -> VocabularyCollectionResponse:
+        existing = await VocabularyCollectionModel.find_one(VocabularyCollectionModel.title == "100+ IELTS Idioms Master Collection")
+        if existing:
+            return await format_collection_response(existing)
+
+        idioms_data = [
+            # Business & Work
+            ("Make a living", "Earn money for basic needs", "He makes a living as a graphic designer."),
+            ("Make ends meet", "Earn just enough to survive", "I work two jobs to make ends meet."),
+            ("Call it a day/night", "Stop working", "Let's call it a day after this meeting."),
+            ("Be cut out for", "Be suitable for something", "He's cut out for sales - very persuasive."),
+            ("Wet behind the ears", "Inexperienced", "She's talented but still wet behind the ears."),
+            ("Put all one's eggs in one basket", "Rely fully on one plan", "Don't put all your eggs in one basket; apply to multiple jobs."),
+            ("Beat the clock", "Finish before deadline", "The team beat the clock and completed the task on time."),
+            ("Burn the candle at both ends", "Overwork", "He's exhausted from burning the candle at both ends."),
+            ("Back to the drawing board", "Start over after failure", "The client rejected our idea, so it's back to the drawing board."),
+            ("Learn the ropes", "Learn how a job works", "I'm still learning the ropes at this company."),
+            ("Keep your nose to the grindstone", "Work hard for a long time", "She kept her nose to the grindstone and got promoted."),
+            ("Climb the corporate ladder", "Get promoted", "He's eager to climb the corporate ladder fast."),
+            ("Think on your feet", "React quickly", "You must think on your feet during presentations."),
+            ("On the same page", "Have the same understanding", "We're finally on the same page with our goals."),
+            ("Get the ball rolling", "Start something", "Let's get the ball rolling on the new campaign."),
+
+            # Shopping
+            ("Hunt for bargains", "Look for cheap deals", "I always hunt for bargains during sales."),
+            ("Go window-shopping", "Look without buying", "We went window-shopping after lunch."),
+            ("Cost an arm and a leg", "Very expensive", "That dress cost an arm and a leg."),
+            ("Take back", "Return an item", "You can take back the bag if it doesn't fit."),
+            ("Pour money down the drain", "Waste money", "Buying that gadget was pouring money down the drain."),
+            ("Fit like a glove", "Fit perfectly", "The suit fits like a glove."),
+            ("The in thing", "Trendy or popular", "Smart watches are the in thing now."),
+            ("Shop till you drop", "Shop for a long time", "We shopped till we dropped on Saturday."),
+            ("Buy on impulse", "Buy without thinking", "I bought those shoes on impulse."),
+            ("Pay through the nose", "Overpay", "I paid through the nose for this coat."),
+            ("In the red", "Losing money", "The online shop is in the red this quarter."),
+            ("In the black", "Making profit", "The store is back in the black after big sales."),
+            ("Bargain basement", "Very cheap", "These came from the bargain basement."),
+            ("Retail therapy", "Shopping to feel happier", "She went for retail therapy after a breakup."),
+            ("Splash out on", "Spend a lot of money", "He splashed out on a designer belt."),
+
+            # Travel
+            ("Let one's hair down", "Relax", "I need a vacation to let my hair down."),
+            ("Give someone a lift", "Give a ride", "He gave me a lift to the airport."),
+            ("Hit the road", "Set off on a journey", "We hit the road early to beat traffic."),
+            ("At the crack of dawn", "Very early morning", "We left at the crack of dawn for the trip."),
+            ("Off the beaten track", "Remote, unusual locations", "I like traveling off the beaten track."),
+            ("Live out of a suitcase", "Constantly travel", "I've been living out of a suitcase for months."),
+            ("Have/get itchy feet", "Want to travel", "I got itchy feet after a year at home."),
+            ("Travel light", "Carry very little luggage", "He always travels light with just a bag."),
+            ("A change of scenery", "Refreshing experience", "A trip gives me a change of scenery."),
+            ("Break the journey", "Stop before continuing", "We broke the journey in Paris."),
+            ("Catch the travel bug", "Start loving travel", "I caught the travel bug after my first trip."),
+            ("Hit the jackpot", "Have great success", "That vacation hotel really hit the jackpot."),
+            ("In the middle of nowhere", "Isolated place", "We stayed in a cabin in the middle of nowhere."),
+            ("Pack in", "Fit a lot into a short time", "We packed in 3 museums in one day."),
+            ("Call it a day", "End the trip/activity", "We were tired and called it a day by noon."),
+
+            # Feelings & Emotions
+            ("Love at first sight", "Immediate romantic attraction", "It was love at first sight for them."),
+            ("Head over heels in love", "Deeply in love", "She's head over heels in love with him."),
+            ("On cloud nine", "Extremely happy", "I was on cloud nine after hearing the news."),
+            ("Break someone's heart", "Deeply hurt someone", "He broke her heart by leaving."),
+            ("Wear your heart on your sleeve", "Show emotions openly", "He wears his heart on his sleeve."),
+            ("A long face", "Look unhappy", "What's with the long face today?"),
+            ("In someone's shoes", "Imagine being someone else", "Try putting yourself in her shoes."),
+            ("Green with envy", "Very jealous", "I was green with envy seeing her trip photos."),
+            ("Down in the dumps", "Feeling sad", "He's down in the dumps lately."),
+            ("Sit on the fence", "Undecided", "She's sitting on the fence about the decision."),
+            ("Feel like two cents", "Ashamed or small", "I felt like two cents after my mistake."),
+            ("Be the apple of one's eye", "Someone loved a lot", "His daughter is the apple of his eye."),
+            ("Blow off steam", "Release anger", "I go to the gym to blow off steam."),
+            ("Keep your chin up", "Stay positive", "Don't worry-keep your chin up!"),
+            ("Jump for joy", "Be extremely happy", "She jumped for joy after passing IELTS."),
+
+            # Education & Study
+            ("Pass with flying colors", "Get excellent results", "He passed all his exams with flying colors."),
+            ("Learn by heart", "Memorize", "I learned the speech by heart."),
+            ("Rack one's brain", "Think hard", "I had to rack my brain to answer that."),
+            ("No pain, no gain", "Effort leads to results", "You need to study hard - no pain, no gain!"),
+            ("Not do things by halves", "Do something with full effort", "She never studies by halves."),
+            ("Think outside the box", "Think creatively", "Our teacher encourages thinking outside the box."),
+            ("Brush up on", "Revise", "I need to brush up on my grammar."),
+            ("Teacher's pet", "Favorite student", "She was always the teacher's pet."),
+            ("Hit the books", "Start studying", "Time to hit the books - finals are soon."),
+            ("Pull an all-nighter", "Study all night", "I had to pull an all-nighter to finish my essay."),
+            ("Cram for (an exam)", "Study in a short time", "He crammed for the math test."),
+            ("A quick learner", "Learn things fast", "She's a quick learner and needs little support."),
+            ("Read between the lines", "Understand hidden meaning", "Try to read between the lines in that article."),
+            ("Daydream in class", "Not focus/pay attention", "He got scolded for daydreaming in class."),
+            ("Top of the class", "Best student", "Jenny is always top of the class.")
+        ]
+
+        created_words = []
+        for word_str, meaning_str, example_str in idioms_data:
+            details = await fetch_word_details(word_str)
+            w_obj = WordModel(
+                word=word_str,
+                word_type=details.get("word_type", "idiom"),
+                ipa=details.get("ipa", ""),
+                meaning=meaning_str,
+                example_sentence=example_str,
+                image_url=""
+            )
+            await w_obj.insert()
+            created_words.append(w_obj)
+
+        new_collection = VocabularyCollectionModel(
+            title="100+ IELTS Idioms Master Collection",
+            description="Bộ 100+ Thành ngữ IELTS thông dụng phân theo chủ đề (Work, Shopping, Travel, Feelings, Education)",
+            topic="IELTS Idioms",
+            language="English",
+            is_official=True,
+            is_public=True,
+            total_learners=250,
+            words=[w[0] for w in idioms_data],
+            custom_words=created_words
+        )
+        await new_collection.insert()
+        return await format_collection_response(new_collection)
