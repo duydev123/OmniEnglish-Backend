@@ -77,6 +77,8 @@ class QuestionResult(BaseModel):
     correct_answer: str
     statement: Optional[str] = Field(default=None, description="Nội dung câu hỏi (cho True/False/Not Given)")
     options: Optional[List[str]] = None
+    explanation: Optional[str] = None
+    excerpt: Optional[str] = None
 
 # --- Schema Trả Về (Response) ---
 class ReadingSubmitResponse(BaseModel):

@@ -27,6 +27,13 @@ seed_service = SeedService ()
 
 @router.post("/seed-reading-passages")
 async def seed_reading_passages():
+    # 0. Xóa sạch dữ liệu cũ để tránh trùng lặp
+    await ReadingPassageModel.delete_all()
+    await ReadingMultipleChoiceModel.delete_all()
+    await ReadingHeadingMatchingModel.delete_all()
+    await ReadingFillBlankModel.delete_all()
+    await ReadingTrueFalseNotGivenModel.delete_all()
+    
     results = []
     
     for mock_data in MOCK_READING_PASSAGES:

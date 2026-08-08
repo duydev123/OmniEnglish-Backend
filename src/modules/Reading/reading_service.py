@@ -275,7 +275,9 @@ class ReadingService:
                 user_answer=user_answer,
                 correct_answer=mc.correct_answer,
                 statement=mc.question_text,
-                options=mc.options
+                options=mc.options,
+                explanation=mc.explanation,
+                excerpt=mc.excerpt
             )
         
         # 2. Chấm Heading Matching
@@ -290,7 +292,9 @@ class ReadingService:
                     is_correct=is_correct,
                     user_answer=user_answer,
                     correct_answer=correct_heading,
-                    statement=f"Heading selection for paragraph {paragraph_id.replace('paragraph_', '').replace('_', ' ').strip().capitalize()}"
+                    statement=f"Heading selection for paragraph {paragraph_id.replace('paragraph_', '').replace('_', ' ').strip().capitalize()}",
+                    explanation=hm.explanations.get(paragraph_id) if hm.explanations else None,
+                    excerpt=hm.excerpts.get(paragraph_id) if hm.excerpts else None
                 )
         
         # 3. Chấm Fill-in-the-blank
@@ -313,7 +317,9 @@ class ReadingService:
                     is_correct=is_correct,
                     user_answer=user_answer,
                     correct_answer=correct_answer,
-                    statement=f"Sentence completion blank {blank_id.replace('blank_', '')}"
+                    statement=f"Sentence completion blank {blank_id.replace('blank_', '')}",
+                    explanation=blank.get("explanation"),
+                    excerpt=blank.get("excerpt")
                 )
         
         # 4. Chấm True/False/Not Given
@@ -333,7 +339,9 @@ class ReadingService:
                     user_answer=user_answer,
                     correct_answer=correct_answer,
                     statement=item["statement"],
-                    options=["TRUE", "FALSE", "NOT GIVEN"]
+                    options=["TRUE", "FALSE", "NOT GIVEN"],
+                    explanation=item.get("explanation"),
+                    excerpt=item.get("excerpt")
                 )
         
         # Cập nhật session

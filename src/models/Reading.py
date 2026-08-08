@@ -33,6 +33,8 @@ class ReadingMultipleChoiceModel(Document):
     question_text: str = Field(..., min_length=1)             # Câu hỏi trắc nghiệm
     options: List[str] = Field(..., min_items=2)              # Các lựa chọn
     correct_answer: str = Field(..., min_length=1)           # Đáp án đúng
+    explanation: Optional[str] = None
+    excerpt: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -42,6 +44,8 @@ class ReadingHeadingMatchingModel(Document):
     order: int = Field(default=4)
     headings: List[str] = Field(..., min_items=2)  # Danh sách các heading để chọn
     correct_matches: Dict[str, str] = Field(...)   # {"paragraph_1": "Heading A", "paragraph_2": "Heading B"}
+    explanations: Optional[Dict[str, str]] = Field(default_factory=dict)
+    excerpts: Optional[Dict[str, str]] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -50,7 +54,7 @@ class ReadingFillBlankModel(Document):
     passage_id: Link[ReadingPassageModel]
     order: int = Field(default=5)
     passage_text: str = Field(..., min_length=10)  # Đoạn văn có chứa các ô trống
-    blanks: List[Dict[str, str]] = Field(..., min_items=1)  # [{"blank_id": "blank_1", "correct_answer": "..."}]
+    blanks: List[Dict[str, str]] = Field(..., min_items=1)  # [{"blank_id": "blank_1", "correct_answer": "...", "explanation": "...", "excerpt": "..."}]
     case_sensitive: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -60,7 +64,7 @@ class ReadingTrueFalseNotGivenModel(Document):
     passage_id: Link[ReadingPassageModel]
     order: int = Field(default=6)
     statements: List[Dict[str, str]] = Field(..., min_items=1)  
-    # Mỗi statement: {"statement": "...", "correct_answer": "TRUE"/"FALSE"/"NOT GIVEN"}
+    # Mỗi statement: {"statement": "...", "correct_answer": "TRUE"/"FALSE"/"NOT GIVEN", "explanation": "...", "excerpt": "..."}
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
