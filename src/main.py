@@ -29,6 +29,14 @@ from modules.Seed import seed_controller
 from models.VocabularyCollectionModel import UserProgressModel, UserWordStatusModel, VocabularyCollectionModel
 from models.Paragraph import WordModel
 
+from models.Listening import (
+    ListeningPassageModel,
+    ListeningMultipleChoiceModel,
+    ListeningCompletionModel,
+    UserListeningSessionModel,
+    UserDictationSessionModel
+)
+
 from models.Reading import (
     ReadingPassageModel,
     ReadingMultipleChoiceModel,
@@ -37,39 +45,42 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
-from models.Listening import (
-    ListeningPassageModel,
-    ListeningMultipleChoiceModel,
-    ListeningCompletionModel,
-    UserListeningSessionModel,
-    UserDictationSessionModel  # Thêm model mới dành riêng cho Dictation
-)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     mongo_uri = os.getenv("MONGO_URI")
     client = AsyncIOMotorClient(mongo_uri)
 
     await init_beanie(
         database=client.get_database("omni_english_db"),
-        document_models=[  UserModel, ReadingPassageModel,
+        document_models=[
+            UserModel,
+            ReadingPassageModel,
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,
             ReadingFillBlankModel,
+            ReadingTrueFalseNotGivenModel,
             UserReadingSessionModel,
             ListeningPassageModel,
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
             UserDictationSessionModel,
-                         
-            ReadingTrueFalseNotGivenModel,
             VocabularyCollectionModel,
             WordModel,
             UserWordStatusModel,
-            UserProgressModel
+            UserProgressModel,
         ]
     )
+
+    try:
+        from modules.Seed.seed_service import SeedService
+        if await ReadingPassageModel.count() == 0:
+            await SeedService().seed_reading_only()
+    except Exception as e:
+        print("Auto seed status:", e)
+
     yield
     client.close()
 
