@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from typing import List
 
+from modules.User.user_util import UserUtil
 from .listening_service import ListeningService
 from .listening_dto import (
     # Passages & History
@@ -36,19 +37,22 @@ async def get_available_passages(
 
 
 @router.get(path="/passages/{passage_id}")
-async def get_passage_detail(passage_id: str):
+async def get_passage_detail(
+    passage_id: str,
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Xem chi tiết 1 bài trước khi làm (Mô tả, độ khó, điểm cao nhất của user...)"""
-    user_id = "test_user_001" # TODO: Thay bằng current_user từ JWT Token
+    user_id = current_user.get("_id") or current_user.get("id")
     return await ListeningService.get_passage_detail(passage_id, user_id)
 
 @router.get(path="/history", response_model=List[ListeningHistoryItemResponse])
 async def get_listening_history(
     page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50)
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(UserUtil.Protect)
 ):
     """Xem lại lịch sử các bài Listening đã hoàn thành (Comprehension & Dictation)"""
-
-    user_id = "test_user_001" # TODO: Thay bằng current_user từ JWT Token
+    user_id = current_user.get("_id") or current_user.get("id")
     return await ListeningService.get_user_history(user_id, page, limit)
 
 
@@ -57,9 +61,12 @@ async def get_listening_history(
 # ==========================================
 
 @router.get(path="/passages/{passage_id}/start-comprehension", response_model=ComprehensionSessionStartResponse)
-async def start_comprehension_session(passage_id: str):
+async def start_comprehension_session(
+    passage_id: str,
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Khởi tạo bài thi nghe hiểu (Lấy audio, transcript, Multiple choice, Completion)"""
-    user_id = "test_user_001"
+    user_id = current_user.get("_id") or current_user.get("id")
     return await ListeningService.start_comprehension_session(user_id, passage_id)
 
 
@@ -89,9 +96,12 @@ async def get_comprehension_session_result(session_id: str):
 # ==========================================
 
 @router.get(path="/passages/{passage_id}/start-dictation", response_model=DictationSessionStartResponse)
-async def start_dictation_session(passage_id: str):
+async def start_dictation_session(
+    passage_id: str,
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Khởi tạo bài chép chính tả (Lấy audio, transcript gốc, từ vựng)"""
-    user_id = "test_user_001"
+    user_id = current_user.get("_id") or current_user.get("id")
     return await ListeningService.start_dictation_session(user_id, passage_id)
 
 async def get_dictation_draft(session_id: str):
