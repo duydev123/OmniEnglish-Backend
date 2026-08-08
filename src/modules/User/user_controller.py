@@ -5,6 +5,8 @@ from .user_dto import (
     RegisterRequest,
     SocialLoginRequest,
     UserProfileResponse,
+    ChangePasswordRequest,
+    UpdateProfileRequest,
 )
 from .user_util import UserUtil
 
@@ -34,3 +36,17 @@ async def google_login(dto: SocialLoginRequest):
 async def facebook_login(dto: SocialLoginRequest):
     dto.provider = "facebook"
     return await user_service.social_login(dto)
+
+@router.post("/change-password", status_code=status.HTTP_200_OK)
+async def change_password(
+    dto: ChangePasswordRequest,
+    current_user: dict = Depends(UserUtil.Protect)
+):
+    return await user_service.change_password(current_user, dto)
+
+@router.patch("/profile", response_model=UserProfileResponse)
+async def update_profile(
+    dto: UpdateProfileRequest,
+    current_user: dict = Depends(UserUtil.Protect)
+):
+    return await user_service.update_profile(current_user, dto)
