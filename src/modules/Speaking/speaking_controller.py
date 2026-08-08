@@ -16,10 +16,10 @@ from .speaking_dto import (
 )
 
 # Import Service (Tầng xử lý logic nghiệp vụ)
-# from .speaking_service import SpeakingService
+from .speaking_service import SpeakingService
 
 router = APIRouter()
-# speaking_service = SpeakingService()
+speaking_service = SpeakingService()
 
 # ==========================================
 # 1. QUẢN LÝ DANH SÁCH ĐỀ THI / TOPICS
@@ -34,16 +34,16 @@ async def get_speaking_topics(
     """
     Hiển thị danh sách các bộ đề (Topics) ngoài màn hình chính để user chọn.
     """
-    pass
-    # return await speaking_service.get_all_topics(page, limit, is_full_test)
+
+    return await speaking_service.get_all_topics(page, limit, is_full_test)
 
 @router.get("/topics/{topic_id}/prompts")
 async def get_topic_prompts(topic_id: str):
     """
     Xem trước danh sách các câu hỏi (Part 1, 2, 3) có bên trong một bộ đề cụ thể.
     """
-    pass
-    # return await speaking_service.get_prompts_by_topic(topic_id)
+
+    return await speaking_service.get_prompts_by_topic(topic_id)
 
 
 # ==========================================
@@ -61,8 +61,7 @@ async def start_topic_session(
     Trả về session_id và câu hỏi đầu tiên.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.start_session_by_topic(user_id, topic_id, test_type)
+    return await speaking_service.start_session_by_topic(user_id, topic_id, test_type)
 
 @router.post("/prompts/{prompt_id}/start")
 async def start_prompt_session(
@@ -75,7 +74,7 @@ async def start_prompt_session(
     """
     user_id = current_user.get("_id") or current_user.get("id")
     pass
-    # return await speaking_service.start_session_by_prompt(user_id, prompt_id)
+    return await speaking_service.start_session_by_prompt(user_id, prompt_id)
 
 
 # ==========================================
