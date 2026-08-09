@@ -9,6 +9,10 @@ from models.Reading import (
 
 from .reading_mock import MOCK_READING_PASSAGES
 
+
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel
+from .speaking_mock import MOCK_SPEAKING_DATA
+
 class SeedService:
     async def seed_reading_only(self) -> dict:
         # 1. Xóa sạch dữ liệu cũ liên quan đến Reading
@@ -62,3 +66,37 @@ class SeedService:
             "status": "success",
             "message": f"🌱 Successfully seeded {inserted_count} Reading Passages and their questions!"
         }
+
+
+    async def seed_speaking_only(self) -> dict:
+        # 1. Xóa dữ liệu Speaking cũ
+        await SpeakingTopicModel.delete_all()
+        await SpeakingPromptModel.delete_all()
+        await UserSpeakingTestSessionModel.delete_all()
+
+        inserted_count = {
+            "topics": 0,
+            "prompts": 0
+        }
+
+        # 2. Duyệt qua mảng mock data và lưu vào DB
+        for item in MOCK_SPEAKING_DATA:
+            # Tạo Topic
+            topic_doc = SpeakingTopicModel(**item["topic"])
+            await topic_doc.insert()
+            inserted_count["topics"] += 1
+
+            # Tạo Prompts (Liên kết với Topic vừa tạo)
+            for prompt_data in item["prompts"]:
+                prompt_doc = SpeakingPromptModel(
+                    topic_id=topic_doc, # Truyền Object/Link vào đây
+                    **prompt_data
+                )
+                await prompt_doc.insert()
+                inserted_count["prompts"] += 1
+
+        return {
+            "status": "success",
+            "message": f"Successfully seeded {inserted_count['topics']} Speaking Topics and {inserted_count['prompts']} Prompts!"
+        }
+        
