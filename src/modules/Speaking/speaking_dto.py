@@ -52,9 +52,15 @@ class SpeakingSegmentSubmitResponse(BaseModel):
     session_id: str
     prompt_id: str
     status: str = "IN_PROGRESS"
-    user_transcript: str                           # Trả về text mà AI nhận diện được ngay lập tức
-    segment_score: Optional[float] = None          # Điểm đánh giá nhanh (nếu có)
-    realtime_feedback: Optional[str] = None        # Nhận xét nhanh (Ví dụ: "Bạn nói hơi nhỏ")
+    user_transcript: str       
+    user_audio_url: Optional[str] = None                    
+    segment_score: Optional[float] = None          
+    pronunciation_score: Optional[float] = None    
+    fluency_score: Optional[float] = None        
+    lexical_score: Optional[float] = None          # THÊM MỚI
+    grammar_score: Optional[float] = None          # THÊM MỚI  
+    realtime_feedback: Optional[str] = None
+    words_detail: List[dict] = Field(default_factory=list)
 
 # ==========================================
 # 3. SUB-SCHEMAS CHO KẾT QUẢ ĐÁNH GIÁ (REVIEW)

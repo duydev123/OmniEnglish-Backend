@@ -1,11 +1,22 @@
 # src/modules/Speaking/speaking_service.py
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, UploadFile
 from typing import Optional, List, Dict
 from beanie.odm.operators.find.evaluation import RegEx
 from beanie import PydanticObjectId
-from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel
-from .speaking_dto import SpeakingTopicSummaryResponse, SpeakingPromptResponse, SpeakingSessionStartResponse, SpeakingPromptResponse
-
+from .speaking_util import SpeakingUtil
+from models.Speaking import (
+    SpeakingTopicModel,
+    SpeakingPromptModel,
+    UserSpeakingTestSessionModel,
+    QuestionDetailItem
+)
+from .speaking_dto import (
+    SpeakingTopicSummaryResponse,
+    SpeakingPromptResponse,
+    SpeakingSessionStartResponse,
+    SpeakingSegmentSubmitResponse,
+    SpeakingSubmitResponse
+)
 class SpeakingService:
     # ==========================================
     # 1. QUẢN LÝ DANH SÁCH ĐỀ THI / TOPICS
@@ -204,4 +215,172 @@ class SpeakingService:
             test_type=prompt.part,
             status="IN_PROGRESS",
             current_prompt=current_prompt_dto
+        )
+    # ==========================================
+    # 3. CHẤM ĐIỂM TỪNG CÂU (SEGMENT EVALUATION)
+    # ==========================================
+    @staticmethod
+    async def process_and_save_segment(
+        user_id: str,
+        session_id: str,
+        prompt_id: str,
+        audio_file: UploadFile
+    ) -> SpeakingSegmentSubmitResponse:
+        """Xử lý upload audio, chấm điểm câu lẻ và cập nhật vào Session."""
+        # 1. Validate ID
+        if not PydanticObjectId.is_valid(session_id) or not PydanticObjectId.is_valid(prompt_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session ID hoặc Prompt ID không hợp lệ!"
+            )
+
+        # 2. Lấy Session
+        session = await UserSpeakingTestSessionModel.get(PydanticObjectId(session_id))
+        if not session or session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy phiên luyện tập này!"
+            )
+
+        if session.status == "COMPLETED":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bài thi này đã hoàn thành!"
+            )
+
+        # 3. Lấy Prompt câu hỏi
+        prompt = await SpeakingPromptModel.get(PydanticObjectId(prompt_id))
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy câu hỏi này!"
+            )
+
+        # 4. Upload Audio & Gọi AI Chấm điểm câu này
+        await SpeakingUtil.validate_audio_file(audio_file)
+        audio_url = await SpeakingUtil.upload_audio_to_cloud(audio_file, folder=f"speaking/{session_id}")
+        eval_res = await SpeakingUtil.evaluate_single_audio_segment(audio_url, prompt.question_text)
+
+        transcript = eval_res.get("transcript", "")
+        segment_score = eval_res.get("segment_score", 0.0)
+        pron_score = eval_res.get("pronunciation_score", 0.0)
+        fluency_score = eval_res.get("fluency_score", 0.0)
+        lexical_score = eval_res.get("lexical_score", 0.0)
+        grammar_score = eval_res.get("grammar_score", 0.0)
+        feedback = eval_res.get("feedback", "")
+        words_detail = eval_res.get("words_detail", []) # Lấy dữ liệu âm tiết
+
+        question_found = False
+        for item in session.questions_detail:
+            if getattr(item, "prompt_id", None) == prompt_id or item.question_text == prompt.question_text:
+                item.prompt_id = prompt_id
+                item.user_audio_url = audio_url
+                item.user_transcript = transcript
+                item.segment_score = segment_score
+                item.pronunciation_score = pron_score
+                item.fluency_score = fluency_score
+                item.lexical_score = lexical_score
+                item.grammar_score = grammar_score
+                item.ai_feedback = feedback
+                item.words_detail = words_detail # Lưu vào mảng
+                item.is_graded = True
+                question_found = True
+                break
+
+        if not question_found:
+            session.questions_detail.append(
+                QuestionDetailItem(
+                    prompt_id=prompt_id,
+                    question_text=prompt.question_text,
+                    user_transcript=transcript,
+                    user_audio_url=audio_url,
+                    segment_score=segment_score,
+                    pronunciation_score=pron_score,
+                    fluency_score=fluency_score,
+                    lexical_score=lexical_score,
+                    grammar_score=grammar_score,
+                    ai_feedback=feedback,
+                    words_detail=words_detail, # Lưu vào mảng
+                    is_graded=True
+                )
+            )
+
+        if session.prompt_id and not session.topic_id:
+            session.pronunciation_score = pron_score
+            session.fluency_score = fluency_score
+            session.lexical_score = lexical_score
+            session.grammar_score = grammar_score
+            session.overall_band_score = segment_score
+            session.status = "COMPLETED"
+
+        await session.save()
+
+        # Trả về Response chứa đầy đủ audio_url và mảng âm tiết
+        return SpeakingSegmentSubmitResponse(
+            session_id=str(session.id),
+            prompt_id=prompt_id,
+            status=session.status,
+            user_transcript=transcript,
+            user_audio_url=audio_url, # Trả về URL để FE play
+            segment_score=segment_score,
+            pronunciation_score=pron_score,
+            fluency_score=fluency_score,
+            lexical_score=lexical_score,
+            grammar_score=grammar_score,
+            realtime_feedback=feedback,
+            words_detail=words_detail # Trả về mảng bóc tách âm tiết
+        )
+    # ==========================================
+    # 4. TỔNG KẾT BÀI THI (SUBMIT & COMPLETE)
+    # ==========================================
+    @staticmethod
+    async def evaluate_session(user_id: str, session_id: str) -> SpeakingSubmitResponse:
+        """Tổng kết toàn bộ điểm các câu trong Session và đổi status thành COMPLETED."""
+        if not PydanticObjectId.is_valid(session_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Session ID không hợp lệ!"
+            )
+
+        session = await UserSpeakingTestSessionModel.get(PydanticObjectId(session_id))
+        if not session or session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Không tìm thấy phiên làm bài!"
+            )
+
+        if not session.questions_detail:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Bạn chưa thực hiện ghi âm câu hỏi nào trong bài thi này!"
+            )
+
+        # 1. Tính trung bình Pronunciation và Fluency từ các câu đã chấm
+        graded_questions = [q for q in session.questions_detail if getattr(q, 'is_graded', False)]
+        total_q = len(graded_questions)
+        
+        if total_q == 0:
+            raise HTTPException(status_code=400, detail="Chưa có câu hỏi nào được chấm điểm!")
+
+        # Chỉ việc TÍNH TRUNG BÌNH CỘNG TỪ CÁC CÂU LẺ
+        avg_pron = sum(q.pronunciation_score or 0.0 for q in graded_questions) / total_q
+        avg_fluency = sum(q.fluency_score or 0.0 for q in graded_questions) / total_q
+        avg_lexical = sum(q.lexical_score or 0.0 for q in graded_questions) / total_q
+        avg_grammar = sum(q.grammar_score or 0.0 for q in graded_questions) / total_q
+        avg_overall = sum(q.overall_score or 0.0 for q in graded_questions) / total_q
+
+        # Lưu vào Session
+        session.pronunciation_score = round(avg_pron, 1)
+        session.fluency_score = round(avg_fluency, 1)
+        session.lexical_score = round(avg_lexical, 1)
+        session.grammar_score = round(avg_grammar, 1)
+        session.overall_band_score = round(avg_overall, 1)
+        
+        session.status = "COMPLETED"
+        await session.save()
+
+        return SpeakingSubmitResponse(
+            session_id=str(session.id),
+            status="COMPLETED",
+            message="Bài thi Speaking đã được hoàn thành!"
         )

@@ -19,9 +19,22 @@ class AreaForGrowthItem(BaseModel):
     correct: str
 
 class QuestionDetailItem(BaseModel):
+    prompt_id: str
     question_text: str
     user_transcript: str
     user_audio_url: Optional[str] = None
+    
+    # Kết quả chấm NHANH (Realtime)
+    pronunciation_score: Optional[float] = 0.0
+    fluency_score: Optional[float] = 0.0
+    overall_score: Optional[float] = 0.0 # Bỏ trường này đi, vì Overall Score của 1 câu không có ý nghĩa trong IELTS.
+    segment_score: Optional[float] = 0.0 # Dùng điểm segment (vd: thang 10 hoặc 100) để đánh giá câu đó.
+    lexical_score: Optional[float] = 0.0  # THÊM MỚI
+    grammar_score: Optional[float] = 0.0  # THÊM MỚI
+    ai_feedback: Optional[str] = None
+    words_detail: List[dict] = Field(default=[])
+    
+    is_graded: bool = False # Đánh dấu đã chấm xong
 
 class MilestoneItem(BaseModel):
     title: str

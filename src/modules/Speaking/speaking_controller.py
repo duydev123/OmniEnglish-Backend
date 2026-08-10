@@ -80,8 +80,7 @@ async def start_prompt_session(
 # ==========================================
 # 3. QUÁ TRÌNH LÀM BÀI (THU ÂM & NỘP TỪNG PHẦN)
 # ==========================================
-
-@router.post("/sessions/{session_id}/segments")
+@router.post("/sessions/{session_id}/segments", response_model=SpeakingSegmentSubmitResponse)
 async def submit_speaking_segment(
     session_id: str,
     prompt_id: str = Form(..., description="ID của câu hỏi đang trả lời"),
@@ -89,31 +88,27 @@ async def submit_speaking_segment(
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """
-    Nộp file audio cho một câu hỏi cụ thể trong session.
-    Hệ thống sẽ upload lên cloud, gọi AI Speech-to-Text chuyển thành văn bản, 
-    và lưu transcript vào questions_detail của session.
+    Nộp file audio cho một câu hỏi. Hệ thống sẽ upload lên cloud, gọi AI chấm điểm câu đó 
+    và trả về điểm số + feedback ngay lập tức.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.process_and_save_segment(user_id, session_id, prompt_id, audio_file)
+    return await SpeakingService.process_and_save_segment(user_id, session_id, prompt_id, audio_file)
+
 
 
 # ==========================================
-# 4. HOÀN THÀNH & PHÂN TÍCH AI (SUBMIT & EVALUATE)
+# 4. HOÀN THÀNH BÀI THI (SUBMIT ALL)
 # ==========================================
-
 @router.post("/sessions/{session_id}/submit", response_model=SpeakingSubmitResponse)
 async def complete_speaking_test(
     session_id: str,
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """
-    User bấm nộp bài. Hệ thống gom tất cả transcript của session, 
-    chạy AI phân tích 4 tiêu chí IELTS, tính điểm và cập nhật session thành COMPLETED.
+    Tổng kết toàn bộ bài thi sau khi đã trả lời xong các câu hỏi.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.evaluate_session(user_id, session_id)
+    return await SpeakingService.evaluate_session(user_id, session_id)
 
 @router.get("/sessions/{session_id}")
 async def get_session_result(
