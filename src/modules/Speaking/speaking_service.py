@@ -100,7 +100,43 @@ class SpeakingService:
 
         # Loại bỏ các Part không có câu hỏi nào cho payload gọn gàng
         return {k: v for k, v in grouped_prompts.items() if len(v) > 0}
-
+    @staticmethod
+    async def get_prompt_detail(prompt_id: str) -> SpeakingPromptResponse:
+        """Lấy chi tiết 1 câu hỏi (Prompt) bằng ID"""
+        from beanie import PydanticObjectId
+        from fastapi import HTTPException
+        
+        # Kiểm tra tính hợp lệ của ID
+        if not PydanticObjectId.is_valid(prompt_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="ID prompt không hợp lệ"
+            )
+            
+        # Truy vấn prompt từ database
+        prompt = await SpeakingPromptModel.get(PydanticObjectId(prompt_id))
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Không tìm thấy câu hỏi (prompt) này"
+            )
+            
+        # Xử lý Link reference của Beanie để lấy topic_id
+        target_topic_id = str(prompt.topic_id.ref.id) if hasattr(prompt.topic_id, "ref") else str(prompt.topic_id.id)
+        
+        # Trả về DTO
+        return SpeakingPromptResponse(
+            id=str(prompt.id),
+            topic_id=target_topic_id,
+            part=prompt.part,
+            sub_topic=prompt.sub_topic,
+            question_text=prompt.question_text,
+            examiner_audio_url=prompt.examiner_audio_url,
+            useful_vocabulary=prompt.useful_vocabulary or [],
+            ielts_tips=prompt.ielts_tips or [],
+            examiner_tip=prompt.examiner_tip,
+            response_structure=prompt.response_structure or []
+        )
    
     @staticmethod
     async def start_session_by_prompt(user_id: str, prompt_id: str) -> SpeakingSessionStartResponse:
@@ -418,6 +454,32 @@ class SpeakingService:
                 audio_url=s.audio_url
             ) for s in sentences
         ]
+    
+    @staticmethod
+    async def get_shadowing_sentence_detail(sentence_id: str) -> ShadowingSentenceResponse:
+        from beanie import PydanticObjectId
+        from fastapi import HTTPException
+        from models.Speaking import ShadowingSentenceModel
+        from .speaking_dto import ShadowingSentenceResponse
+
+        # Kiểm tra tính hợp lệ của ObjectId
+        if not PydanticObjectId.is_valid(sentence_id):
+            raise HTTPException(status_code=400, detail="ID câu không hợp lệ")
+            
+        # Truy vấn câu Shadowing từ Database
+        sentence = await ShadowingSentenceModel.get(PydanticObjectId(sentence_id))
+        
+        if not sentence:
+            raise HTTPException(status_code=404, detail="Không tìm thấy câu Shadowing này")
+            
+        # Trả về kết quả theo chuẩn DTO
+        return ShadowingSentenceResponse(
+            id=str(sentence.id),
+            target_skill=sentence.target_skill,
+            english_text=sentence.english_text,
+            ipa_text=sentence.ipa_text,
+            audio_url=sentence.audio_url
+        )
 
     @staticmethod
     async def evaluate_shadowing_segment(sentence_id: str, audio_file: UploadFile) -> ShadowingEvaluateResponse:
@@ -434,14 +496,12 @@ class SpeakingService:
         if not sentence:
             raise HTTPException(status_code=404, detail="Không tìm thấy câu Shadowing này")
             
-        # 1. Kiểm tra file audio
+        # 1. Kiểm tra định dạng file
         await SpeakingUtil.validate_audio_file(audio_file)
         
-        # 2. Upload file lên Cloudinary ĐỂ NÓ ÉP KIỂU SANG .WAV CHUẨN (Nhàn nhất)
-        audio_url = await SpeakingUtil.upload_audio_to_cloud(audio_file, folder="shadowing")
-        
-        # 3. Đưa URL âm thanh chuẩn và câu text gốc vào Azure chấm
-        eval_res = await SpeakingUtil.evaluate_shadowing_audio(audio_url, sentence.english_text)
+        # 2. BỎ ĐOẠN UPLOAD CLOUDINARY ĐI. 
+        # Ném thẳng audio_file vào hàm evaluate_shadowing_audio luôn
+        eval_res = await SpeakingUtil.evaluate_shadowing_audio(audio_file, sentence.english_text)
         
         return ShadowingEvaluateResponse(
             accuracy_score=eval_res["accuracy_score"],

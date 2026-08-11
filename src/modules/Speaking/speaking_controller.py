@@ -46,6 +46,13 @@ async def get_topic_prompts(topic_id: str):
 
     return await speaking_service.get_prompts_by_topic(topic_id)
 
+@router.get("/prompts/{prompt_id}", response_model=SpeakingPromptResponse)
+async def get_prompt_detail(prompt_id: str):
+    """
+    Lấy thông tin chi tiết của 1 Prompt (câu hỏi) cụ thể.
+    Bao gồm nội dung câu hỏi, audio giám khảo (nếu có), từ vựng gợi ý, tips...
+    """
+    return await speaking_service.get_prompt_detail(prompt_id)
 
 # ==========================================
 # 2. KHỞI TẠO BÀI LÀM (SESSIONS)
