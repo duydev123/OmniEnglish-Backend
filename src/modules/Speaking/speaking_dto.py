@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 from datetime import datetime
+from models.Speaking import WordDetail
 
 # ==========================================
 # 1. QUẢN LÝ CHỦ ĐỀ & CÂU HỎI (TOPICS & PROMPTS)
@@ -60,7 +61,9 @@ class SpeakingSegmentSubmitResponse(BaseModel):
     lexical_score: Optional[float] = None          # THÊM MỚI
     grammar_score: Optional[float] = None          # THÊM MỚI  
     realtime_feedback: Optional[str] = None
-    words_detail: List[dict] = Field(default_factory=list)
+    words_detail: List[WordDetail] = Field(default_factory=list)
+    next_prompt_id: Optional[str] = None
+
 
 # ==========================================
 # 3. SUB-SCHEMAS CHO KẾT QUẢ ĐÁNH GIÁ (REVIEW)
@@ -139,3 +142,20 @@ class SpeakingHistoryItemResponse(BaseModel):
     duration_str: str
     status: str
     created_at: datetime
+    
+    
+#====shadowing 
+# DTO trả về thông tin câu Shadowing
+class ShadowingSentenceResponse(BaseModel):
+    id: str
+    target_skill: str
+    english_text: str
+    ipa_text: str
+    audio_url: Optional[str] = None
+
+# DTO trả về kết quả chấm điểm (Không lưu lịch sử)
+class ShadowingEvaluateResponse(BaseModel):
+    accuracy_score: float
+    fluency_score: float
+    user_transcript: str
+    words_detail: List[WordDetail] = Field(default_factory=list)

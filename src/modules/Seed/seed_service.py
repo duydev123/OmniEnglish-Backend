@@ -13,6 +13,11 @@ from .reading_mock import MOCK_READING_PASSAGES
 from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel
 from .speaking_mock import MOCK_SPEAKING_DATA
 
+
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
+
+# 2. Thêm import mock data ở đầu file
+from .shadowing_mock import MOCK_SHADOWING_DATA
 class SeedService:
     async def seed_reading_only(self) -> dict:
         # 1. Xóa sạch dữ liệu cũ liên quan đến Reading
@@ -100,3 +105,19 @@ class SeedService:
             "message": f"Successfully seeded {inserted_count['topics']} Speaking Topics and {inserted_count['prompts']} Prompts!"
         }
         
+    async def seed_shadowing_only(self) -> dict:
+        # Xóa sạch data cũ để tránh trùng lặp khi seed nhiều lần
+        await ShadowingSentenceModel.delete_all()
+        
+        inserted_count = 0
+        
+        # Lặp qua mảng mock data và đẩy vào Database
+        for item in MOCK_SHADOWING_DATA:
+            doc = ShadowingSentenceModel(**item)
+            await doc.insert()
+            inserted_count += 1
+            
+        return {
+            "status": "success",
+            "message": f"Successfully seeded {inserted_count} Shadowing Sentences!"
+        }

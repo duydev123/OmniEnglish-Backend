@@ -39,6 +39,7 @@ dependencies = [
     "pydantic-core==2.46.4",
     "pydantic-extra-types==2.11.1",
     "pydantic-settings==2.14.2",
+    "pydub>=0.25.1",
     "pygments==2.20.0",
     "pyjwt==2.13.0",
     "pymongo==4.6.3",
