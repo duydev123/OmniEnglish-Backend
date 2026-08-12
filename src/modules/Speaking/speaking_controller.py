@@ -1,19 +1,20 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status, UploadFile, File, Form
-from typing import List, Optional
+from typing import List, Optional, Dict
 from modules.User.user_util import UserUtil
 
 # Import các DTO (Data Transfer Object) - Ông cần bổ sung thêm các schema này bên file speaking_dto.py
 from .speaking_dto import (
     SpeakingPromptResponse, 
-    SpeakingSegmentSubmitRequest, 
     SpeakingSegmentSubmitResponse,
-    SpeakingSubmitResponse,
     # Cần định nghĩa thêm các DTO dưới đây bên file DTO:
-    # SpeakingTopicSummaryResponse,
-    # SpeakingSessionStartResponse,
-    # SpeakingHistoryItemResponse,
-    # SpeakingSessionDetailResponse
+    SpeakingTopicSummaryResponse,
+    SpeakingSessionStartResponse,
+    SpeakingHistoryItemResponse,
+    SpeakingSessionDetailResponse,
+
 )
+
+from .speaking_dto import ShadowingSentenceResponse, ShadowingEvaluateResponse
 
 # Import Service (Tầng xử lý logic nghiệp vụ)
 from .speaking_service import SpeakingService
@@ -25,7 +26,7 @@ speaking_service = SpeakingService()
 # 1. QUẢN LÝ DANH SÁCH ĐỀ THI / TOPICS
 # ==========================================
 
-@router.get("/topics")
+@router.get("/topics", response_model=List[SpeakingTopicSummaryResponse])
 async def get_speaking_topics(
     page: int = Query(1, ge=1, description="Trang hiện tại"),
     limit: int = Query(10, ge=1, le=50, description="Số lượng đề trên mỗi trang"),
@@ -37,7 +38,7 @@ async def get_speaking_topics(
 
     return await speaking_service.get_all_topics(page, limit, is_full_test)
 
-@router.get("/topics/{topic_id}/prompts")
+@router.get("/topics/{topic_id}/prompts", response_model=Dict[str, List[SpeakingPromptResponse]])
 async def get_topic_prompts(topic_id: str):
     """
     Xem trước danh sách các câu hỏi (Part 1, 2, 3) có bên trong một bộ đề cụ thể.
@@ -45,25 +46,20 @@ async def get_topic_prompts(topic_id: str):
 
     return await speaking_service.get_prompts_by_topic(topic_id)
 
+@router.get("/prompts/{prompt_id}", response_model=SpeakingPromptResponse)
+async def get_prompt_detail(prompt_id: str):
+    """
+    Lấy thông tin chi tiết của 1 Prompt (câu hỏi) cụ thể.
+    Bao gồm nội dung câu hỏi, audio giám khảo (nếu có), từ vựng gợi ý, tips...
+    """
+    return await speaking_service.get_prompt_detail(prompt_id)
 
 # ==========================================
 # 2. KHỞI TẠO BÀI LÀM (SESSIONS)
 # ==========================================
 
-@router.post("/topics/{topic_id}/start")
-async def start_topic_session(
-    topic_id: str,
-    test_type: str = Query(..., description="Có thể là FULL_TEST hoặc PART_1, PART_2..."),
-    current_user: dict = Depends(UserUtil.Protect)
-):
-    """
-    Bắt đầu làm một bộ đề. Hệ thống sẽ tạo UserSpeakingTestSessionModel với status = IN_PROGRESS.
-    Trả về session_id và câu hỏi đầu tiên.
-    """
-    user_id = current_user.get("_id") or current_user.get("id")
-    return await speaking_service.start_session_by_topic(user_id, topic_id, test_type)
 
-@router.post("/prompts/{prompt_id}/start")
+@router.post("/prompts/{prompt_id}/start", response_model=SpeakingSessionStartResponse)
 async def start_prompt_session(
     prompt_id: str,
     current_user: dict = Depends(UserUtil.Protect)
@@ -73,15 +69,13 @@ async def start_prompt_session(
     Tương tự tạo Session nhưng chỉ link tới prompt_id.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    return await speaking_service.start_session_by_prompt(user_id, prompt_id)
 
+    return await speaking_service.start_session_by_prompt(user_id, prompt_id)
 
 # ==========================================
 # 3. QUÁ TRÌNH LÀM BÀI (THU ÂM & NỘP TỪNG PHẦN)
 # ==========================================
-
-@router.post("/sessions/{session_id}/segments")
+@router.post("/sessions/{session_id}/segments", response_model=SpeakingSegmentSubmitResponse)
 async def submit_speaking_segment(
     session_id: str,
     prompt_id: str = Form(..., description="ID của câu hỏi đang trả lời"),
@@ -89,33 +83,20 @@ async def submit_speaking_segment(
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """
-    Nộp file audio cho một câu hỏi cụ thể trong session.
-    Hệ thống sẽ upload lên cloud, gọi AI Speech-to-Text chuyển thành văn bản, 
-    và lưu transcript vào questions_detail của session.
+    Nộp file audio cho một câu hỏi. Hệ thống sẽ upload lên cloud, gọi AI chấm điểm câu đó 
+    và trả về điểm số + feedback ngay lập tức.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.process_and_save_segment(user_id, session_id, prompt_id, audio_file)
+    return await SpeakingService.process_and_save_segment(user_id, session_id, prompt_id, audio_file)
+
 
 
 # ==========================================
-# 4. HOÀN THÀNH & PHÂN TÍCH AI (SUBMIT & EVALUATE)
-# ==========================================
+# 4. HOÀN THÀNH BÀI THI (SUBMIT ALL)
+# # ==========================================
 
-@router.post("/sessions/{session_id}/submit", response_model=SpeakingSubmitResponse)
-async def complete_speaking_test(
-    session_id: str,
-    current_user: dict = Depends(UserUtil.Protect)
-):
-    """
-    User bấm nộp bài. Hệ thống gom tất cả transcript của session, 
-    chạy AI phân tích 4 tiêu chí IELTS, tính điểm và cập nhật session thành COMPLETED.
-    """
-    user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.evaluate_session(user_id, session_id)
 
-@router.get("/sessions/{session_id}")
+@router.get("/sessions/{session_id}", response_model=SpeakingSessionDetailResponse)
 async def get_session_result(
     session_id: str,
     current_user: dict = Depends(UserUtil.Protect)
@@ -125,23 +106,69 @@ async def get_session_result(
     để render màn hình Result Analysis.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.get_session_detail(user_id, session_id)
+    return await speaking_service.get_session_detail(user_id, session_id)
 
 
 # ==========================================
 # 5. LỊCH SỬ HỌC TẬP (HISTORY)
 # ==========================================
 
-@router.get("/history")
+@router.get("/history", response_model=List[SpeakingHistoryItemResponse])
 async def get_speaking_history(
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50),
+    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    limit: int = Query(10, ge=1, le=50, description="Số lượng bài trên mỗi trang"),
+    topic_id: Optional[str] = Query(None, description="Lọc các câu lẻ thuộc Bộ đề (Topic) này"),
+    prompt_id: Optional[str] = Query(None, description="Lọc theo đúng 1 câu hỏi (Prompt) cụ thể"),
+    part: Optional[str] = Query(None, description="Lọc theo nhóm kỹ năng (VD: PART_1, PART_2, PART_3, SHADOWING)"),
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """
-    Lấy danh sách các bài Speaking user đã hoàn thành (Dùng cho tab Lịch sử học tập).
+    Lấy danh sách lịch sử thi Speaking (các session tạo theo câu hỏi lẻ).
+    Hỗ trợ lọc linh hoạt theo topic_id (bộ đề), prompt_id (câu hỏi), hoặc part.
     """
     user_id = current_user.get("_id") or current_user.get("id")
-    pass
-    # return await speaking_service.get_user_history(user_id, page, limit)
+    
+    # Gọi hàm Service vừa tối ưu
+    return await SpeakingService.get_user_history(
+        user_id=user_id, 
+        page=page, 
+        limit=limit, 
+        topic_id=topic_id, 
+        prompt_id=prompt_id, 
+        part=part
+    )
+    
+    
+    
+    
+# ==========================================
+# 6. SHADOWING API (LUYỆN PHÁT ÂM)
+# ==========================================
+
+@router.get("/shadowing/sentences", response_model=List[ShadowingSentenceResponse])
+async def get_shadowing_sentences(
+    page: int = Query(1, ge=1, description="Trang hiện tại"),
+    limit: int = Query(10, ge=1, le=50, description="Số câu mỗi trang")
+):
+    """Lấy danh sách các câu luyện Shadowing"""
+    return await SpeakingService.get_shadowing_sentences(page, limit)
+
+
+@router.get("/shadowing/sentences/{sentence_id}", response_model=ShadowingSentenceResponse)
+async def get_shadowing_sentence_detail(sentence_id: str):
+    """Lấy chi tiết 1 câu Shadowing để render giao diện (Có chứa IPA, Audio mẫu)"""
+    return await SpeakingService.get_shadowing_sentence_detail(sentence_id)
+
+
+@router.post("/shadowing/sentences/{sentence_id}/evaluate", response_model=ShadowingEvaluateResponse)
+async def evaluate_shadowing(
+    sentence_id: str,
+    audio_file: UploadFile = File(..., description="File âm thanh user đọc"),
+    current_user: dict = Depends(UserUtil.Protect)
+):
+    """
+    Nộp file audio để chấm điểm Shadowing. 
+    Lưu ý: API này trả kết quả TỨC THÌ (Real-time), KHÔNG gọi Gemini AI và KHÔNG lưu lịch sử.
+    """
+    # Vì không lưu DB nên ta lấy current_user chỉ để đảm bảo user đã login
+    return await SpeakingService.evaluate_shadowing_segment(sentence_id, audio_file)

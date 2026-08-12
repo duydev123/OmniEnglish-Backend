@@ -17,11 +17,34 @@ class AreaForGrowthItem(BaseModel):
     tip: str
     incorrect: str
     correct: str
+    
+class PhonemeDetail(BaseModel):
+    phoneme: str
+    accuracy_score: float
+
+class WordDetail(BaseModel):
+    word: str
+    accuracy_score: float
+    error_type: str  # "None", "Mispronunciation", "Omission", "Insertion"
+    phonemes: List[PhonemeDetail] = []
 
 class QuestionDetailItem(BaseModel):
+    prompt_id: str
     question_text: str
     user_transcript: str
     user_audio_url: Optional[str] = None
+    
+    # Kết quả chấm NHANH (Realtime)
+    pronunciation_score: Optional[float] = 0.0
+    fluency_score: Optional[float] = 0.0
+    overall_score: Optional[float] = 0.0 # Bỏ trường này đi, vì Overall Score của 1 câu không có ý nghĩa trong IELTS.
+    segment_score: Optional[float] = 0.0 # Dùng điểm segment (vd: thang 10 hoặc 100) để đánh giá câu đó.
+    lexical_score: Optional[float] = 0.0  # THÊM MỚI
+    grammar_score: Optional[float] = 0.0  # THÊM MỚI
+    ai_feedback: Optional[str] = None
+    words_detail: List[WordDetail] = Field(default=[])
+    
+    is_graded: bool = False # Đánh dấu đã chấm xong
 
 class MilestoneItem(BaseModel):
     title: str
@@ -47,7 +70,7 @@ class SpeakingTopicModel(Document):
 class SpeakingPromptModel(Document):
     topic_id: Link[SpeakingTopicModel]                        # Bắt buộc link tới 1 chủ đề/bộ đề
     
-    part: str = Field(..., pattern="^(PART_1|PART_2|PART_3|SHADOWING)$")
+    part: str = Field(..., pattern="^(PART_1|PART_2|PART_3)$")
     sub_topic: Optional[str] = None                           # Dành cho Part 1 (VD: "Hometown", "Work", v.v.)
     
     question_text: str = Field(..., min_length=3)
@@ -110,3 +133,13 @@ class UserSpeakingTestSessionModel(Document):
         indexes = [
             [("user_id", 1), ("test_type", 1), ("created_at", -1)]
         ]
+        
+#========Shadowing 
+class ShadowingSentenceModel(Document):
+    target_skill: str = "Intonation" # VD: "Intonation", "Stress", "Linking words"
+    english_text: str                # Câu tiếng Anh gốc (VD: "The meticulous architectural...")
+    ipa_text: str                    # Phiên âm (VD: "/məˈtɪk.jə.ləs/")
+    audio_url: Optional[str] = None  # Link audio đọc mẫu
+    
+    class Settings:
+        name = "speaking_shadowing_sentences"
