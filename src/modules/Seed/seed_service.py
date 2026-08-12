@@ -9,6 +9,15 @@ from models.Reading import (
 
 from .reading_mock import MOCK_READING_PASSAGES
 
+
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel
+from .speaking_mock import MOCK_SPEAKING_DATA
+
+
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
+
+# 2. Thêm import mock data ở đầu file
+from .shadowing_mock import MOCK_SHADOWING_DATA
 class SeedService:
     async def seed_reading_only(self) -> dict:
         # 1. Xóa sạch dữ liệu cũ liên quan đến Reading
@@ -61,4 +70,54 @@ class SeedService:
         return {
             "status": "success",
             "message": f"🌱 Successfully seeded {inserted_count} Reading Passages and their questions!"
+        }
+
+
+    async def seed_speaking_only(self) -> dict:
+        # 1. Xóa dữ liệu Speaking cũ
+        await SpeakingTopicModel.delete_all()
+        await SpeakingPromptModel.delete_all()
+        await UserSpeakingTestSessionModel.delete_all()
+
+        inserted_count = {
+            "topics": 0,
+            "prompts": 0
+        }
+
+        # 2. Duyệt qua mảng mock data và lưu vào DB
+        for item in MOCK_SPEAKING_DATA:
+            # Tạo Topic
+            topic_doc = SpeakingTopicModel(**item["topic"])
+            await topic_doc.insert()
+            inserted_count["topics"] += 1
+
+            # Tạo Prompts (Liên kết với Topic vừa tạo)
+            for prompt_data in item["prompts"]:
+                prompt_doc = SpeakingPromptModel(
+                    topic_id=topic_doc, # Truyền Object/Link vào đây
+                    **prompt_data
+                )
+                await prompt_doc.insert()
+                inserted_count["prompts"] += 1
+
+        return {
+            "status": "success",
+            "message": f"Successfully seeded {inserted_count['topics']} Speaking Topics and {inserted_count['prompts']} Prompts!"
+        }
+        
+    async def seed_shadowing_only(self) -> dict:
+        # Xóa sạch data cũ để tránh trùng lặp khi seed nhiều lần
+        await ShadowingSentenceModel.delete_all()
+        
+        inserted_count = 0
+        
+        # Lặp qua mảng mock data và đẩy vào Database
+        for item in MOCK_SHADOWING_DATA:
+            doc = ShadowingSentenceModel(**item)
+            await doc.insert()
+            inserted_count += 1
+            
+        return {
+            "status": "success",
+            "message": f"Successfully seeded {inserted_count} Shadowing Sentences!"
         }

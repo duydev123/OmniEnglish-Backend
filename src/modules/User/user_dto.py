@@ -58,12 +58,19 @@ class UserProfileResponse(BaseModel):
     id: str
     username: str
     email: EmailStr
-    role: str
-    avatar: Optional[str] = None
-    proficiency_level: str
-    status: str
+    role: str                                               #[cite: 17]
+    avatar: Optional[str] = ""
+    proficiency_level: Optional[str] = "A1"
+    status: Optional[str] = "Active"
     token: Optional[str] = None
     access_token: Optional[str] = None
-    
-    settings: UserSettingsResponse
-    stats: UserStatsResponse
+    created_at: Optional[str] = None
+    settings: UserSettingsResponse                          #[cite: 17]
+    stats: UserStatsResponse                                #[cite: 17]
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str = Field(..., min_length=6)
+
+class UpdateProfileRequest(BaseModel):
+    avatar: Optional[str] = None

@@ -47,6 +47,7 @@ from models.Reading import (
 )
 
 from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,6 +76,9 @@ async def lifespan(app: FastAPI):
             UserProgressModel,
             WritingPromptModel,
             WritingSubmissionModel,
+            #begin speaking 
+            SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
+            #end speaking 
         ]
     )
 

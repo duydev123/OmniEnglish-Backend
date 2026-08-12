@@ -38,7 +38,7 @@ class UserModel(Document):
     avatar: Optional[str] = None
     
     # BỔ SUNG CHO ADMIN USER MANAGEMENT:
-    proficiency_level: str = Field(default="B1")        # "A1", "A2", "B1", "B2", "C1", "C2"
+    proficiency_level: str = Field(default="A1")        # "A1", "A2", "B1", "B2", "C1", "C2"
     status: str = Field(default="Active")               # "Active", "Suspended", "Pending"
     
     # EMBEDDED SETTINGS & STATS

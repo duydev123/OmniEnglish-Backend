@@ -14,6 +14,7 @@ from .reading_mock import (
     # MOCK_TRUE_FALSE_NOT_GIVEN
 )
 
+
 router = APIRouter()
 seed_service = SeedService ()
 
@@ -148,3 +149,13 @@ async def seed_reading_passages():
 @router.post("/seed", status_code=status.HTTP_200_OK)
 async def seed():
     return await seed_service.seed_reading_only()
+
+@router.post("/seed-speaking", status_code=status.HTTP_200_OK)
+async def seed_speaking():
+    """Xóa dữ liệu cũ và tiêm dữ liệu Speaking mẫu vào database"""
+    return await seed_service.seed_speaking_only()
+
+@router.post("/seed-shadowing", status_code=status.HTTP_200_OK)
+async def seed_shadowing():
+    """Xóa dữ liệu cũ và tiêm dữ liệu Shadowing mẫu vào database"""
+    return await seed_service.seed_shadowing_only()
