@@ -45,13 +45,8 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
-from models.Listening import (
-    ListeningPassageModel,
-    ListeningMultipleChoiceModel,
-    ListeningCompletionModel,
-    UserListeningSessionModel,
-    UserDictationSessionModel  # Thêm model mới dành riêng cho Dictation
-)
+
+from models.WritingModel import WritingPromptModel, WritingSubmissionModel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,23 +62,19 @@ async def lifespan(app: FastAPI):
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,
             ReadingFillBlankModel,
+            ReadingTrueFalseNotGivenModel,
             UserReadingSessionModel,
             ListeningPassageModel,
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
             UserDictationSessionModel,
-                         
-            ReadingTrueFalseNotGivenModel,
             VocabularyCollectionModel,
             WordModel,
             UserWordStatusModel,
             UserProgressModel,
-            ListeningPassageModel,
-            ListeningMultipleChoiceModel,
-            ListeningCompletionModel,
-            UserListeningSessionModel,
-            UserDictationSessionModel
+            WritingPromptModel,
+            WritingSubmissionModel,
         ]
     )
 
@@ -91,6 +82,8 @@ async def lifespan(app: FastAPI):
         from modules.Seed.seed_service import SeedService
         if await ReadingPassageModel.count() == 0:
             await SeedService().seed_reading_only()
+        from modules.Writing.writing_seed import seed_writing_prompts
+        await seed_writing_prompts()
     except Exception as e:
         print("Auto seed status:", e)
 
@@ -102,6 +95,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="omni english web", lifespan=lifespan)
 
 # Config CORS
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

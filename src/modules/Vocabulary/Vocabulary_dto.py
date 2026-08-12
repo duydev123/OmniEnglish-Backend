@@ -21,13 +21,14 @@ class VocabularyCollectionResponse(BaseModel):
     language: str                                           
     is_official: bool                                       
     total_learners: int                                     
+    total_words: int = 0
     
     # Tiến độ cá nhân trong bộ từ này (nếu user đã học)
     accuracy_percentage: float = 0.0                        
     study_time_seconds: int = 0                             
     
     # Danh sách từ vựng chi tiết
-    words_list: List[WordDetailResponse]                    
+    words_list: Optional[List[WordDetailResponse]] = Field(default_factory=list)                    
 
 # --- Request Cập nhật trạng thái từng từ ---
 class UpdateWordStatusRequest(BaseModel):

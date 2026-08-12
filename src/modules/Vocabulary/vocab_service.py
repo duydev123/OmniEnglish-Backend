@@ -636,97 +636,141 @@ async def fetch_ipa_for_word(word: str, depth: int = 0) -> str:
     return ""
 
 
-async def format_collection_response(collection: VocabularyCollectionModel) -> VocabularyCollectionResponse:
+async def format_collection_response(
+    collection: VocabularyCollectionModel,
+    user_id: Optional[str] = None,
+    include_words: bool = True
+) -> VocabularyCollectionResponse:
     col_str_id = str(getattr(collection, 'id', ''))
     
-    word_ids = []
-    direct_words = []
+    accuracy_percentage = float(getattr(collection, 'accuracy_percentage', 0.0) or 0.0)
+    study_time_seconds = int(getattr(collection, 'study_time_seconds', 0) or 0)
+    word_statuses = {}
 
-    if hasattr(collection, 'custom_words') and collection.custom_words:
-        for link in collection.custom_words:
-            if hasattr(link, 'ref') and hasattr(link.ref, 'id'):
-                word_ids.append(link.ref.id)
-            elif hasattr(link, 'id') and not hasattr(link, 'fetch'):
-                word_ids.append(link.id)
-            elif getattr(link, 'word', None):
-                direct_words.append(link)
-
-    query_conditions = []
-    if word_ids:
-        query_conditions.append({"_id": {"$in": word_ids}})
-    if getattr(collection, 'title', None):
-        query_conditions.append({"collection_id": collection.title})
-    if col_str_id and col_str_id != "None":
-        query_conditions.append({"collection_id": col_str_id})
-
-    words_docs = []
-    if query_conditions:
+    if user_id and col_str_id and col_str_id != "None" and PydanticObjectId.is_valid(col_str_id):
         try:
-            words_docs = await WordModel.find({"$or": query_conditions}).to_list()
-        except Exception:
-            words_docs = []
+            progress_record = await UserProgressModel.find_one(
+                UserProgressModel.user_id == user_id,
+                UserProgressModel.collection_id.id == PydanticObjectId(col_str_id)
+            )
+            if progress_record:
+                accuracy_percentage = float(getattr(progress_record, 'accuracy_percentage', 0.0) or 0.0)
+                study_time_seconds = int(getattr(progress_record, 'study_time_seconds', 0) or 0)
 
-    # If words_docs is empty (e.g. unit test mocked DB), resolve custom_words via link.fetch()
-    if not words_docs and not direct_words and hasattr(collection, 'custom_words') and collection.custom_words:
-        for link in collection.custom_words:
-            try:
-                w = await link.fetch() if hasattr(link, 'fetch') else link
-                if w and getattr(w, 'word', None):
-                    direct_words.append(w)
-            except Exception:
-                pass
+            if include_words:
+                status_records = await UserWordStatusModel.find(
+                    UserWordStatusModel.user_id == user_id,
+                    UserWordStatusModel.collection_id.id == PydanticObjectId(col_str_id)
+                ).to_list()
+                for sr in status_records:
+                    status_val = sr.status.value if hasattr(sr.status, 'value') else str(sr.status)
+                    word_statuses[sr.word] = status_val
+        except Exception as e:
+            logger.debug(f"Error fetching user progress for format_collection_response: {e}")
 
-    all_words = direct_words + words_docs
+    # Fast path: when listing collections (include_words=False), calculate total words count without serializing thousands of words
+    custom_words_count = len(getattr(collection, 'custom_words', []) or [])
+    words_count = len(getattr(collection, 'words', []) or [])
+    estimated_total_words = custom_words_count + words_count
+
     words_list = []
-    seen_keys = set()
 
-    for w in all_words:
-        w_id = str(getattr(w, 'id', ''))
-        w_name = str(getattr(w, 'word', ''))
-        if not w_name or w_name in seen_keys:
-            continue
-        seen_keys.add(w_name)
-        words_list.append({
-            "id": w_id or w_name,
-            "word": w_name,
-            "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
-            "meaning": str(getattr(w, 'meaning', '') or ''),
-            "ipa": str(getattr(w, 'ipa', '') or ''),
-            "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
-            "image_url": str(getattr(w, 'image_url', '') or '')
-        })
+    if include_words:
+        word_ids = []
+        direct_words = []
 
-    if hasattr(collection, 'words') and collection.words:
-        for w_item in collection.words:
-            if isinstance(w_item, str):
-                if w_item not in seen_keys:
-                    seen_keys.add(w_item)
-                    words_list.append({
-                        "id": w_item,
-                        "word": w_item,
-                        "word_type": "idiom" if ' ' in w_item else "noun",
-                        "meaning": "",
-                        "ipa": "",
-                        "example_sentence": "",
-                        "image_url": ""
-                    })
-            else:
+        if hasattr(collection, 'custom_words') and collection.custom_words:
+            for link in collection.custom_words:
+                if hasattr(link, 'ref') and hasattr(link.ref, 'id'):
+                    word_ids.append(link.ref.id)
+                elif hasattr(link, 'id') and not hasattr(link, 'fetch'):
+                    word_ids.append(link.id)
+                elif getattr(link, 'word', None):
+                    direct_words.append(link)
+
+        query_conditions = []
+        if word_ids:
+            query_conditions.append({"_id": {"$in": word_ids}})
+        if getattr(collection, 'title', None):
+            query_conditions.append({"collection_id": collection.title})
+        if col_str_id and col_str_id != "None":
+            query_conditions.append({"collection_id": col_str_id})
+
+        words_docs = []
+        if query_conditions:
+            try:
+                words_docs = await WordModel.find({"$or": query_conditions}).to_list()
+            except Exception:
+                words_docs = []
+
+        # If words_docs is empty (e.g. unit test mocked DB), resolve custom_words via link.fetch()
+        if not words_docs and not direct_words and hasattr(collection, 'custom_words') and collection.custom_words:
+            for link in collection.custom_words:
                 try:
-                    w = await w_item.fetch() if hasattr(w_item, 'fetch') else w_item
-                    w_name = str(getattr(w, 'word', '')) if w else ''
-                    if w and w_name and w_name not in seen_keys:
-                        seen_keys.add(w_name)
-                        words_list.append({
-                            "id": str(getattr(w, 'id', '')),
-                            "word": w_name,
-                            "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
-                            "meaning": str(getattr(w, 'meaning', '') or ''),
-                            "ipa": str(getattr(w, 'ipa', '') or ''),
-                            "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
-                            "image_url": str(getattr(w, 'image_url', '') or '')
-                        })
+                    w = await link.fetch() if hasattr(link, 'fetch') else link
+                    if w and getattr(w, 'word', None):
+                        direct_words.append(w)
                 except Exception:
                     pass
+
+        all_words = direct_words + words_docs
+        seen_keys = set()
+
+        for w in all_words:
+            w_id = str(getattr(w, 'id', ''))
+            w_name = str(getattr(w, 'word', ''))
+            if not w_name or w_name in seen_keys:
+                continue
+            seen_keys.add(w_name)
+            learning_st = word_statuses.get(w_id) or word_statuses.get(w_name) or "LEARNING"
+            words_list.append({
+                "id": w_id or w_name,
+                "word": w_name,
+                "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
+                "meaning": str(getattr(w, 'meaning', '') or ''),
+                "ipa": str(getattr(w, 'ipa', '') or ''),
+                "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
+                "image_url": str(getattr(w, 'image_url', '') or ''),
+                "learning_status": learning_st
+            })
+
+        if hasattr(collection, 'words') and collection.words:
+            for w_item in collection.words:
+                if isinstance(w_item, str):
+                    if w_item not in seen_keys:
+                        seen_keys.add(w_item)
+                        learning_st = word_statuses.get(w_item, "LEARNING")
+                        words_list.append({
+                            "id": w_item,
+                            "word": w_item,
+                            "word_type": "idiom" if ' ' in w_item else "noun",
+                            "meaning": "",
+                            "ipa": "",
+                            "example_sentence": "",
+                            "image_url": "",
+                            "learning_status": learning_st
+                        })
+                else:
+                    try:
+                        w = await w_item.fetch() if hasattr(w_item, 'fetch') else w_item
+                        w_name = str(getattr(w, 'word', '')) if w else ''
+                        w_id = str(getattr(w, 'id', '')) if w else ''
+                        if w and w_name and w_name not in seen_keys:
+                            seen_keys.add(w_name)
+                            learning_st = word_statuses.get(w_id) or word_statuses.get(w_name) or "LEARNING"
+                            words_list.append({
+                                "id": w_id,
+                                "word": w_name,
+                                "word_type": normalize_word_type(getattr(w, 'word_type', 'noun')),
+                                "meaning": str(getattr(w, 'meaning', '') or ''),
+                                "ipa": str(getattr(w, 'ipa', '') or ''),
+                                "example_sentence": str(getattr(w, 'example_sentence', '') or ''),
+                                "image_url": str(getattr(w, 'image_url', '') or ''),
+                                "learning_status": learning_st
+                            })
+                    except Exception:
+                        pass
+        estimated_total_words = len(words_list)
 
     return VocabularyCollectionResponse(
         id=col_str_id,
@@ -736,34 +780,39 @@ async def format_collection_response(collection: VocabularyCollectionModel) -> V
         language=str(getattr(collection, 'language', 'en-US') or "en-US"),
         is_official=bool(getattr(collection, 'is_official', False)),
         total_learners=int(getattr(collection, 'total_learners', 0) or 0),
-        accuracy_percentage=float(getattr(collection, 'accuracy_percentage', 0.0) or 0.0),
-        study_time_seconds=int(getattr(collection, 'study_time_seconds', 0) or 0),
+        total_words=estimated_total_words,
+        accuracy_percentage=accuracy_percentage,
+        study_time_seconds=study_time_seconds,
         words_list=words_list
     )
 
 
 class VocabService:
     @staticmethod
-    async def get_my_collections() -> List[VocabularyCollectionResponse]:
-        collections = await VocabularyCollectionModel.find(VocabularyCollectionModel.is_official == False).to_list()
+    async def get_my_collections(user_id: str = "test_user_123") -> List[VocabularyCollectionResponse]:
+        collections = await VocabularyCollectionModel.find(
+            VocabularyCollectionModel.user_id == user_id,
+            VocabularyCollectionModel.is_official == False
+        ).to_list()
         res = []
         for col in collections:
-            formatted = await format_collection_response(col)
+            formatted = await format_collection_response(col, user_id=user_id, include_words=False)
             res.append(formatted)
         return res
 
     @staticmethod
-    async def get_official_collections() -> List[VocabularyCollectionResponse]:
+    async def get_official_collections(user_id: Optional[str] = None) -> List[VocabularyCollectionResponse]:
         collections = await VocabularyCollectionModel.find(VocabularyCollectionModel.is_official == True).to_list()
         res = []
         for col in collections:
-            formatted = await format_collection_response(col)
+            formatted = await format_collection_response(col, user_id=user_id, include_words=False)
             res.append(formatted)
         return res
 
     @staticmethod
-    async def create_my_collection(payload: CreateCollectionRequest) -> VocabularyCollectionResponse:
+    async def create_my_collection(payload: CreateCollectionRequest, user_id: str = "test_user_123") -> VocabularyCollectionResponse:
         new_collection = VocabularyCollectionModel(
+            user_id=user_id,
             title=payload.title,
             description=payload.description,
             language=payload.language,
@@ -790,10 +839,11 @@ class VocabService:
         )
 
     @staticmethod
-    async def update_collection_details(collection_id: str, payload: UpdateCollectionRequest) -> dict:
+    async def update_collection_details(collection_id: str, payload: UpdateCollectionRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         collection = await VocabularyCollectionModel.get(obj_id)
-        if not collection or collection.is_official:
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection or collection.is_official or (isinstance(col_user_id, str) and col_user_id and col_user_id != user_id):
             raise HTTPException(
                 status_code=403, 
                 detail="Collection not found or you do not have permission to edit it"
@@ -818,10 +868,11 @@ class VocabService:
         }
 
     @staticmethod
-    async def add_word_to_collection(collection_id: str, payload: AddWordRequest) -> dict:
+    async def add_word_to_collection(collection_id: str, payload: AddWordRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         collection = await VocabularyCollectionModel.get(obj_id)
-        if not collection or collection.is_official:
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection or collection.is_official or (isinstance(col_user_id, str) and col_user_id and col_user_id != user_id):
             raise HTTPException(
                 status_code=403,
                 detail="Collection not found or you do not have permission to edit it"
@@ -850,6 +901,7 @@ class VocabService:
             ipa_val = await fetch_ipa_for_word(payload.word)
 
         new_word = WordModel(
+            user_id=user_id,
             word=payload.word,
             word_type=word_type_val,
             meaning=payload.meaning or "Pending update",
@@ -865,11 +917,15 @@ class VocabService:
         return {"status": "success", "message": f"Successfully added the word '{payload.word}'!"}
 
     @staticmethod
-    async def update_single_word(word_id: str, payload: UpdateWordRequest) -> dict:
+    async def update_single_word(word_id: str, payload: UpdateWordRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(word_id)
         word = await WordModel.get(obj_id)
         if not word:
             raise HTTPException(status_code=404, detail="Word not found")
+
+        word_user_id = getattr(word, 'user_id', None)
+        if isinstance(word_user_id, str) and word_user_id and word_user_id != user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to edit this word")
 
         if payload.word is not None:
             word.word = payload.word
@@ -901,10 +957,11 @@ class VocabService:
         }
 
     @staticmethod
-    async def bulk_update_words_in_collection(collection_id: str, payload: BulkUpdateWordsRequest) -> dict:
+    async def bulk_update_words_in_collection(collection_id: str, payload: BulkUpdateWordsRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         collection = await VocabularyCollectionModel.get(obj_id)
-        if not collection or collection.is_official:
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection or collection.is_official or (isinstance(col_user_id, str) and col_user_id and col_user_id != user_id):
             raise HTTPException(
                 status_code=403, 
                 detail="Collection not found or you do not have permission to edit it"
@@ -939,10 +996,11 @@ class VocabService:
         }
 
     @staticmethod
-    async def bulk_add_words_to_collection(collection_id: str, payload: BulkAddWordsRequest) -> dict:
+    async def bulk_add_words_to_collection(collection_id: str, payload: BulkAddWordsRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         collection = await VocabularyCollectionModel.get(obj_id)
-        if not collection or collection.is_official:
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection or collection.is_official or (isinstance(col_user_id, str) and col_user_id and col_user_id != user_id):
             raise HTTPException(
                 status_code=403,
                 detail="Collection not found or you do not have permission to edit it"
@@ -975,6 +1033,7 @@ class VocabService:
                 ipa_val = await fetch_ipa_for_word(w.word)
 
             new_word = WordModel(
+                user_id=user_id,
                 word=w.word,
                 word_type=word_type_val,
                 meaning=w.meaning,
@@ -1000,12 +1059,12 @@ class VocabService:
         }
 
     @staticmethod
-    async def process_and_add_pasted_text_with_gemini(collection_id: str, payload: PasteTextRequest) -> dict:
-        user_id = get_current_user_id() 
+    async def process_and_add_pasted_text_with_gemini(collection_id: str, payload: PasteTextRequest, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         
         collection = await VocabularyCollectionModel.get(obj_id)
-        if not collection or collection.is_official:
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection or collection.is_official or (isinstance(col_user_id, str) and col_user_id and col_user_id != user_id):
             raise HTTPException(
                 status_code=403, 
                 detail="Collection not found or you do not have permission to edit it"
@@ -1179,17 +1238,20 @@ class VocabService:
         }
 
     @staticmethod
-    async def get_vocabulary_collection(collection_id: str) -> VocabularyCollectionResponse:
+    async def get_vocabulary_collection(collection_id: str, user_id: Optional[str] = None) -> VocabularyCollectionResponse:
         obj_id = validate_object_id(collection_id)
         collection = await VocabularyCollectionModel.get(obj_id)
         if not collection:
             raise HTTPException(status_code=404, detail="Vocabulary collection not found")
         
-        return await format_collection_response(collection)
+        col_user_id = getattr(collection, 'user_id', None)
+        if not collection.is_official and not getattr(collection, 'is_public', True) and isinstance(col_user_id, str) and col_user_id and user_id and col_user_id != user_id:
+            raise HTTPException(status_code=403, detail="You do not have permission to view this collection")
+
+        return await format_collection_response(collection, user_id=user_id)
 
     @staticmethod
-    async def update_word_status(payload: UpdateWordStatusRequest) -> VocabularyProgressResponse:
-        user_id = get_current_user_id() 
+    async def update_word_status(payload: UpdateWordStatusRequest, user_id: str = "test_user_123") -> VocabularyProgressResponse:
         collection_id = payload.collection_id
         obj_id = validate_object_id(collection_id)
 
@@ -1261,8 +1323,7 @@ class VocabService:
         )
 
     @staticmethod
-    async def update_collection_progress(payload: UpdateCollectionProgressRequest) -> VocabularyProgressResponse:
-        user_id = get_current_user_id()
+    async def update_collection_progress(payload: UpdateCollectionProgressRequest, user_id: str = "test_user_123") -> VocabularyProgressResponse:
         collection_id = payload.collection_id
         obj_id = validate_object_id(collection_id)
         
@@ -1320,7 +1381,7 @@ class VocabService:
         )
 
     @staticmethod
-    async def delete_vocabulary_collection(collection_id: str) -> dict:
+    async def delete_vocabulary_collection(collection_id: str, user_id: str = "test_user_123") -> dict:
         obj_id = validate_object_id(collection_id)
         
         collection = await VocabularyCollectionModel.get(obj_id)
@@ -1331,6 +1392,13 @@ class VocabService:
             raise HTTPException(
                 status_code=403, 
                 detail="You do not have permission to delete an official system collection"
+            )
+            
+        col_user_id = getattr(collection, 'user_id', None)
+        if isinstance(col_user_id, str) and col_user_id and col_user_id != user_id:
+            raise HTTPException(
+                status_code=403, 
+                detail="You do not have permission to delete this collection"
             )
             
         await UserWordStatusModel.find(
