@@ -46,6 +46,7 @@ from models.Reading import (
     UserReadingSessionModel
 )
 
+from models.WritingModel import WritingPromptModel, WritingSubmissionModel
 from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @asynccontextmanager
@@ -73,6 +74,8 @@ async def lifespan(app: FastAPI):
             WordModel,
             UserWordStatusModel,
             UserProgressModel,
+            WritingPromptModel,
+            WritingSubmissionModel,
             #begin speaking 
             SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
             #end speaking 
@@ -83,6 +86,8 @@ async def lifespan(app: FastAPI):
         from modules.Seed.seed_service import SeedService
         if await ReadingPassageModel.count() == 0:
             await SeedService().seed_reading_only()
+        from modules.Writing.writing_seed import seed_writing_prompts
+        await seed_writing_prompts()
     except Exception as e:
         print("Auto seed status:", e)
 
@@ -94,6 +99,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="omni english web", lifespan=lifespan)
 
 # Config CORS
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

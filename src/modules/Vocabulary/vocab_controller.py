@@ -1,8 +1,9 @@
 import logging
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
+from modules.User.user_util import UserUtil
 from .Vocabulary_dto import (
     PasteTextRequest,
     VocabularyCollectionResponse,
@@ -30,6 +31,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def extract_user_id(current_user: dict) -> str:
+    if not current_user:
+        return ""
+    return str(current_user.get("_id") or current_user.get("id") or "")
+
+
 @router.get(path="/fetch-ipa")
 async def fetch_ipa_endpoint(word: str):
     """Fetch standard IPA phonetic transcription and primary word_type for a word via backend"""
@@ -46,20 +53,22 @@ async def fetch_ipa_endpoint(word: str):
 # =====================================================================
 
 @router.get(path="/collections/my-collections", response_model=List[VocabularyCollectionResponse])
-async def get_my_collections():
-    """Get all personal user vocabulary collections from MongoDB"""
+async def get_my_collections(current_user: dict = Depends(UserUtil.Protect)):
+    """Get all personal user vocabulary collections from MongoDB for the authenticated user"""
     try:
-        return await VocabService.get_my_collections()
+        user_id = extract_user_id(current_user)
+        return await VocabService.get_my_collections(user_id=user_id)
     except Exception as e:
         logger.error(f"Error fetching my collections: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Unknown server error")
 
 
 @router.get(path="/collections/official", response_model=List[VocabularyCollectionResponse])
-async def get_official_collections():
+async def get_official_collections(current_user: Optional[dict] = Depends(UserUtil.ProtectOptional)):
     """Get all official system default vocabulary collections from MongoDB"""
     try:
-        return await VocabService.get_official_collections()
+        user_id = extract_user_id(current_user) if current_user else None
+        return await VocabService.get_official_collections(user_id=user_id)
     except Exception as e:
         logger.error(f"Error fetching official collections: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Unknown server error")
@@ -76,10 +85,11 @@ async def seed_ielts_idioms_collection():
 
 
 @router.post(path="/collections/my-collections", response_model=VocabularyCollectionResponse)
-async def create_my_collection(payload: CreateCollectionRequest):
-    """Create a new personal vocabulary collection (is_official = False)"""
+async def create_my_collection(payload: CreateCollectionRequest, current_user: dict = Depends(UserUtil.Protect)):
+    """Create a new personal vocabulary collection (is_official = False) for authenticated user"""
     try:
-        return await VocabService.create_my_collection(payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.create_my_collection(payload=payload, user_id=user_id)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -87,10 +97,15 @@ async def create_my_collection(payload: CreateCollectionRequest):
 
 
 @router.put(path="/collections/{collection_id}")
-async def update_collection_details(collection_id: str, payload: UpdateCollectionRequest):
+async def update_collection_details(
+    collection_id: str, 
+    payload: UpdateCollectionRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Update details (title, description, language) of a personal collection"""
     try:
-        return await VocabService.update_collection_details(collection_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.update_collection_details(collection_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -100,10 +115,15 @@ async def update_collection_details(collection_id: str, payload: UpdateCollectio
 
 
 @router.post(path="/collections/{collection_id}/words")
-async def add_word_to_collection(collection_id: str, payload: AddWordRequest):
+async def add_word_to_collection(
+    collection_id: str, 
+    payload: AddWordRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Add a new word to a specific collection"""
     try:
-        return await VocabService.add_word_to_collection(collection_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.add_word_to_collection(collection_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -113,10 +133,15 @@ async def add_word_to_collection(collection_id: str, payload: AddWordRequest):
 
 
 @router.put(path="/words/{word_id}")
-async def update_single_word(word_id: str, payload: UpdateWordRequest):
+async def update_single_word(
+    word_id: str, 
+    payload: UpdateWordRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Update details of an existing word"""
     try:
-        return await VocabService.update_single_word(word_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.update_single_word(word_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -126,10 +151,15 @@ async def update_single_word(word_id: str, payload: UpdateWordRequest):
 
 
 @router.put(path="/collections/{collection_id}/words/bulk-update")
-async def bulk_update_words_in_collection(collection_id: str, payload: BulkUpdateWordsRequest):
+async def bulk_update_words_in_collection(
+    collection_id: str, 
+    payload: BulkUpdateWordsRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Bulk update multiple words inside a specific collection"""
     try:
-        return await VocabService.bulk_update_words_in_collection(collection_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.bulk_update_words_in_collection(collection_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -139,10 +169,15 @@ async def bulk_update_words_in_collection(collection_id: str, payload: BulkUpdat
 
 
 @router.post(path="/collections/{collection_id}/words/bulk")
-async def bulk_add_words_to_collection(collection_id: str, payload: BulkAddWordsRequest):
+async def bulk_add_words_to_collection(
+    collection_id: str, 
+    payload: BulkAddWordsRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Receive an array of words, validate and insert them individually to generate exact Links"""
     try:
-        return await VocabService.bulk_add_words_to_collection(collection_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.bulk_add_words_to_collection(collection_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -152,13 +187,18 @@ async def bulk_add_words_to_collection(collection_id: str, payload: BulkAddWords
 
 
 @router.post(path="/collections/{collection_id}/words/paste-text")
-async def process_and_add_pasted_text_with_gemini(collection_id: str, payload: PasteTextRequest):
+async def process_and_add_pasted_text_with_gemini(
+    collection_id: str, 
+    payload: PasteTextRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """
     Use Google Gemini AI to analyze raw text and extract high-value vocabulary words.
     Filters out common stop words and categorizes words by CEFR and Parts of Speech.
     """
     try:
-        return await VocabService.process_and_add_pasted_text_with_gemini(collection_id, payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.process_and_add_pasted_text_with_gemini(collection_id, payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -171,10 +211,14 @@ async def process_and_add_pasted_text_with_gemini(collection_id: str, payload: P
 # =====================================================================
 
 @router.get(path="/collections/{collection_id}", response_model=VocabularyCollectionResponse)
-async def get_vocabulary_collection(collection_id: str):
+async def get_vocabulary_collection(
+    collection_id: str, 
+    current_user: Optional[dict] = Depends(UserUtil.ProtectOptional)
+):
     """Get vocabulary collection details including word list with IPA, meaning, image, and examples"""
     try:
-        return await VocabService.get_vocabulary_collection(collection_id)
+        user_id = extract_user_id(current_user) if current_user else None
+        return await VocabService.get_vocabulary_collection(collection_id, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -183,10 +227,14 @@ async def get_vocabulary_collection(collection_id: str):
 
 
 @router.post(path="/word-status/update", response_model=VocabularyProgressResponse)
-async def update_word_status(payload: UpdateWordStatusRequest):
+async def update_word_status(
+    payload: UpdateWordStatusRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Update individual word status during Flashcard study (LEARNING, MASTERED, NEEDS_REVIEW)"""
     try:
-        return await VocabService.update_word_status(payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.update_word_status(payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -195,10 +243,14 @@ async def update_word_status(payload: UpdateWordStatusRequest):
 
 
 @router.post(path="/collection-progress/update", response_model=VocabularyProgressResponse)
-async def update_collection_progress(payload: UpdateCollectionProgressRequest):
+async def update_collection_progress(
+    payload: UpdateCollectionProgressRequest, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Update completion percentage and study time for the entire collection"""
     try:
-        return await VocabService.update_collection_progress(payload)
+        user_id = extract_user_id(current_user)
+        return await VocabService.update_collection_progress(payload, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:
@@ -207,10 +259,14 @@ async def update_collection_progress(payload: UpdateCollectionProgressRequest):
 
 
 @router.delete(path="/collections/{collection_id}")
-async def delete_vocabulary_collection(collection_id: str):
+async def delete_vocabulary_collection(
+    collection_id: str, 
+    current_user: dict = Depends(UserUtil.Protect)
+):
     """Delete a personal vocabulary collection and its associated progress data"""
     try:
-        return await VocabService.delete_vocabulary_collection(collection_id)
+        user_id = extract_user_id(current_user)
+        return await VocabService.delete_vocabulary_collection(collection_id, user_id=user_id)
     except HTTPException:
         raise
     except Exception as e:

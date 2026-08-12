@@ -21,6 +21,7 @@ if os.path.exists(os.path.join(parent_dir, "src")):
 from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
 from models.Paragraph import WordModel, WordType
 
+from modules.User.user_util import UserUtil
 from modules.Vocabulary.vocab_controller import (
     router,
     normalize_word_type,
@@ -69,6 +70,8 @@ def init_mock_beanie():
 
 # Create TestClient instance for router integration tests
 app = FastAPI()
+app.dependency_overrides[UserUtil.Protect] = lambda: {"_id": "test_user_123", "email": "test@example.com"}
+app.dependency_overrides[UserUtil.ProtectOptional] = lambda: {"_id": "test_user_123", "email": "test@example.com"}
 app.include_router(router)
 client = TestClient(app)
 
@@ -1542,3 +1545,81 @@ class TestVocabEdgeCasesAndRegressions:
             assert res2["ipa"] == ""
 
         asyncio.run(run_test())
+
+
+# =====================================================================
+# CLASS 6: Test User Authentication & Ownership Isolation (403 Forbidden)
+# =====================================================================
+class TestVocabUserAuthenticationAndIsolation:
+    """Kiểm thử phân quyền sở hữu và cách ly dữ liệu theo user_id trong module Vocabulary."""
+
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_update_collection_details_other_user_raises_403(self, mock_get):
+        """User A không được quyền sửa thông tin bộ từ vựng của User B (403 Forbidden)."""
+        async def run_test():
+            mock_col = MagicMock()
+            mock_col.id = PydanticObjectId("507f1f77bcf86cd799439011")
+            mock_col.is_official = False
+            mock_col.user_id = "user_owner_B"
+            mock_get.return_value = mock_col
+
+            payload = UpdateCollectionRequest(title="Hacked Title")
+            with pytest.raises(HTTPException) as exc_info:
+                await VocabService.update_collection_details("507f1f77bcf86cd799439011", payload, user_id="user_attacker_A")
+
+            assert exc_info.value.status_code == 403
+            assert "permission" in exc_info.value.detail.lower()
+
+        asyncio.run(run_test())
+
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_add_word_other_user_collection_raises_403(self, mock_get):
+        """User A không được quyền thêm từ vào bộ từ vựng của User B (403 Forbidden)."""
+        async def run_test():
+            mock_col = MagicMock()
+            mock_col.is_official = False
+            mock_col.user_id = "user_owner_B"
+            mock_get.return_value = mock_col
+
+            payload = AddWordRequest(word="unauthorized", word_type="noun", meaning="bất hợp pháp")
+            with pytest.raises(HTTPException) as exc_info:
+                await VocabService.add_word_to_collection("507f1f77bcf86cd799439011", payload, user_id="user_attacker_A")
+
+            assert exc_info.value.status_code == 403
+
+        asyncio.run(run_test())
+
+    @patch("modules.Vocabulary.vocab_service.WordModel.get")
+    def test_update_single_word_other_user_raises_403(self, mock_word_get):
+        """User A không được quyền sửa từ vựng thuộc về User B (403 Forbidden)."""
+        async def run_test():
+            mock_word = MagicMock()
+            mock_word.user_id = "user_owner_B"
+            mock_word_get.return_value = mock_word
+
+            payload = UpdateWordRequest(meaning="Hacked Meaning")
+            with pytest.raises(HTTPException) as exc_info:
+                await VocabService.update_single_word("507f1f77bcf86cd799439011", payload, user_id="user_attacker_A")
+
+            assert exc_info.value.status_code == 403
+            assert "permission" in exc_info.value.detail.lower()
+
+        asyncio.run(run_test())
+
+    @patch("modules.Vocabulary.vocab_service.VocabularyCollectionModel.get")
+    def test_delete_collection_other_user_raises_403(self, mock_get):
+        """User A không được quyền xóa bộ từ vựng thuộc về User B (403 Forbidden)."""
+        async def run_test():
+            mock_col = MagicMock()
+            mock_col.is_official = False
+            mock_col.user_id = "user_owner_B"
+            mock_get.return_value = mock_col
+
+            with pytest.raises(HTTPException) as exc_info:
+                await VocabService.delete_vocabulary_collection("507f1f77bcf86cd799439011", user_id="user_attacker_A")
+
+            assert exc_info.value.status_code == 403
+            assert "permission" in exc_info.value.detail.lower()
+
+        asyncio.run(run_test())
+

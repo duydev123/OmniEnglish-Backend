@@ -18,7 +18,7 @@ class UserStats(BaseModel):
     weekly_xp: int = Field(default=0)
     total_words_learned: int = Field(default=0)
     total_speaking_hours: float = Field(default=0.0)
-    general_english_level: str = Field(default="A1")
+    general_english_level: str = Field(default="B1")
     business_english_progress: float = Field(default=0.0)
     avg_reading_score: float = Field(default=0.0)
     avg_listening_score: float = Field(default=0.0)

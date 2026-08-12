@@ -14,6 +14,7 @@ class WordLearningStatus(str, Enum):
 
 
 class VocabularyCollectionModel(Document):
+    user_id: Optional[str] = Field(default=None)
     title: str = Field(..., min_length=3)     
     description: Optional[str] = None
     topic: str = Field(..., min_length=3)        
@@ -31,6 +32,9 @@ class VocabularyCollectionModel(Document):
 
     class Settings:
         name = "vocabulary_collections"
+        indexes = [
+            [("user_id", 1), ("is_official", 1)]
+        ]
 
 
 

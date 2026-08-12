@@ -1,95 +1,137 @@
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
-# --- Schema Trả Về (Response) ---
+# --- Prompt Schemas ---
 class WritingPromptResponse(BaseModel):
     id: str
-    title: str                                     # VD: "Impact of Artificial Intelligence..."
-    task_type: str                                 # "TASK_1" hoặc "TASK_2"
-    task_description: str                          # Đề bài chi tiết
-    reference_image_url: Optional[str] = None      # Ảnh tham chiếu (nếu có)[cite: 19]
-    ref_id: Optional[str] = None                   # VD: "ARCH-204-URB"[cite: 19]
+    title: str
+    task_type: str                                 # "WITH_GRAPH" or "WITHOUT_GRAPH"
+    task_description: str
+    reference_image_url: Optional[str] = None
+    ref_id: Optional[str] = None
+    time_limit_minutes: int = 40
+    word_count_target: int = 250
+    suggested_structure: List[Dict[str, Any]] = Field(default_factory=list)
+    advanced_vocabulary: List[str] = Field(default_factory=list)
+    user_status: Optional[str] = None
+    draft_content: Optional[str] = None
+    time_spent_seconds: Optional[int] = None
+
+
+# --- AI Assistance Requests & Responses (UC-09, UC-10, UC-11) ---
+class AIAssistanceRequest(BaseModel):
+    prompt_id: str
+    action: str                                    # "OUTLINE", "COLLOCATIONS", "SAMPLE_ESSAY"
+    user_notes: Optional[str] = None
+    difficulty: Optional[str] = Field(default="medium")
     
-    time_limit_minutes: int                        # Thời gian làm bài (phút)[cite: 19]
-    word_count_target: int                         # Số từ mục tiêu (VD: 250)[cite: 19]
-    
-    # Gợi ý hỗ trợ người viết ở cột bên phải UI
-    suggested_structure: List[Dict[str, str]]       # [{"section": "Introduction", "guide": "..."}][cite: 19]
-    advanced_vocabulary: List[str]                 # ["Juxtaposition", "Obsolescence", ...][cite: 19]
+class AIOutlineSection(BaseModel):
+    title: str                                     # e.g., "Introduction"
+    sub_points: List[str]                          # e.g., ["Hook: ...", "Thesis statement: ..."]
 
+class AIOutlineResponse(BaseModel):
+    status: str = "success"
+    prompt_id: str
+    outline: List[AIOutlineSection]
 
+class AICollocationItem(BaseModel):
+    word: str
+    basic_equivalent: str = Field(default="", description="Simple word/phrase it replaces")
+    meaning_en: str
+    meaning_vi: str
+    example: str
 
+class AICollocationGroup(BaseModel):
+    category: str
+    items: List[AICollocationItem]
 
+class AICollocationsResponse(BaseModel):
+    status: str = "success"
+    prompt_id: str
+    suggestions: List[AICollocationGroup]
+    difficulty: Optional[str] = Field(default="medium")
 
+class AISampleEssayResponse(BaseModel):
+    status: str = "success"
+    prompt_id: str
+    sample_title: str
+    full_text: str
+    structure_annotations: List[Dict[str, Any]]     
+    good_practices: List[str]
 
-
-    # --- Schema Nhận Vào (Request) ---
+# --- Draft Request & Response ---
 class WritingDraftRequest(BaseModel):
-    essay_content: str                             # Nội dung bài viết đang soạn thảo[cite: 19]
-    word_count: int = Field(default=0, ge=0)       # Số từ hiện tại[cite: 19]
-    time_spent_seconds: int = Field(default=0, ge=0) # Thời gian đã gõ bài[cite: 19]
+    prompt_id: str
+    essay_content: str = ""
+    word_count: int = Field(default=0, ge=0)
+    time_spent_seconds: int = Field(default=0, ge=0)
 
-# --- Schema Trả Về (Response) ---
 class WritingDraftResponse(BaseModel):
     session_id: str
-    status: str = "DRAFT"                          # Trạng thái DRAFT[cite: 19]
+    status: str = "DRAFT"
     message: str = "Draft saved successfully"
 
-
-
-
-
-
-
-
-
-    # --- Schemas Phụ Trả Về Cho Báo Cáo REVIEW ---
+# --- Review Schemas (UC-13, UC-14) ---
 class HighlightSpan(BaseModel):
-    text: str                                      # Từ/Cụm từ bị gạch chân[cite: 19]
-    type: str                                      # "GRAMMAR", "WORD_CHOICE", "ADVANCED_LEXIS"[cite: 19]
-    feedback_index: int                            # Trỏ tới index tương ứng trong danh sách feedback[cite: 19]
+    text: str
+    type: str                                      # "GRAMMAR", "WORD_CHOICE", "COHERENCE"
+    feedback_index: int
 
 class DetailedFeedback(BaseModel):
-    type: str                                      # Loại lỗi[cite: 19]
-    original: str                                  # Cụm gốc bị sai[cite: 19]
-    correction: str                                # Cụm đúng sửa lại[cite: 19]
-    explanation: str                               # Giải thích chi tiết từ AI[cite: 19]
+    category: str                                  # "Grammar", "Vocabulary", "Coherence"
+    original: str
+    correction: str
+    explanation: str
+    rule: Optional[str] = None
+    similar_examples: Optional[List[str]] = None
 
 class ImprovementComparison(BaseModel):
-    category: str                                  # "Grammar", "Vocabulary"...[cite: 19]
-    original: str                                  # "technology improve"[cite: 19]
-    improved: str                                  # "technology improves"[cite: 19]
+    category: str                                  # "Grammar", "Vocabulary", "Structural Fix"
+    original: str
+    improved: str
 
 class Milestone(BaseModel):
-    date: str                                      # "Oct 15"[cite: 19]
-    title: str                                     # "Achieved C1 Vocabulary"[cite: 19]
+    date: str
+    title: str
 
-
-# --- Schema Trả Về Chính (Response) ---
 class WritingSubmitResponse(BaseModel):
     session_id: str
-    status: str = "REVIEWED"                       # DRAFT -> SUBMITTED -> REVIEWED[cite: 19]
-    topic_title: str                               #[cite: 19]
-    essay_content: str                             #[cite: 19]
-    word_count: int                                #[cite: 19]
-    time_spent_seconds: int                        #[cite: 19]
+    status: str = "REVIEWED"                       # "DRAFT", "SUBMITTED", "REVIEWED"
+    prompt_id: str
+    topic_title: str
+    essay_content: str
+    word_count: int
+    time_spent_seconds: int
     
-    # 1. Điểm số Tổng & 4 Tiêu chí IELTS[cite: 19]
-    overall_score: int                             # VD: 75 Score[cite: 19]
-    potential_score: Optional[int] = None          # Điểm tiềm năng (VD: 88)[cite: 19]
-    general_summary: Optional[str] = None          # Nhận xét tổng quan[cite: 19]
+    # 1. Band Scores (1.0 - 9.0)
+    overall_score: float                           # e.g., 7.5
+    potential_score: float                         # e.g., 8.0
+    general_summary: str
     
-    task_achievement_score: float                  # VD: 8.5/9.0[cite: 19]
-    lexical_resource_score: float                  # VD: 7.5/9.0[cite: 19]
-    grammar_accuracy_score: float                  # VD: 6.5/9.0[cite: 19]
-    coherence_cohesion_score: float                # VD: 7.0/9.0[cite: 19]
+    task_achievement_score: float                  # Task Response (25%)
+    coherence_cohesion_score: float                # Coherence & Cohesion (25%)
+    lexical_resource_score: float                  # Lexical Resource (25%)
+    grammar_accuracy_score: float                  # Grammar Range & Accuracy (25%)
 
-    # 2. Render Highlight màu trên bài essay[cite: 19]
-    highlight_spans: List[HighlightSpan]           #[cite: 19]
+    # 2. Render Highlight markers on essay
+    highlight_spans: List[HighlightSpan]
 
-    # 3. Chi tiết Feedback cột bên phải UI[cite: 19]
-    detailed_feedbacks: List[DetailedFeedback]     #[cite: 19]
+    # 3. Detailed feedback list
+    detailed_feedbacks: List[DetailedFeedback]
     
-    # 4. Bảng so sánh nâng cấp & Lịch sử cột mốc[cite: 19]
-    improvements_comparison: List[ImprovementComparison] #[cite: 19]
-    achieved_milestones: List[Milestone]           #[cite: 19]
+    # 4. Side-by-side Key Improvements & Positive feedback & Next steps
+    improvements_comparison: List[ImprovementComparison]
+    positive_feedback: List[str]
+    actionable_next_steps: List[str]
+    achieved_milestones: List[Milestone]
+
+# --- Improved Essay Sample Schema (UC-15) ---
+class ImprovedEssaySampleResponse(BaseModel):
+    status: str = "success"
+    session_id: str
+    original_essay: str
+    improved_essay: str
+    improvements_explanation: List[str]
+
+class AnswerQuestionPayload(BaseModel):
+    question: str
