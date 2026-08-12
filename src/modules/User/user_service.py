@@ -12,6 +12,7 @@ from .user_util import UserUtil
 
 
 class UserService:
+    @staticmethod
     async def login(data: LoginRequest) -> TokenResponse:
         # 1. Tìm user theo email
         user = await UserModel.find_one(UserModel.email == data.email)
@@ -38,6 +39,7 @@ class UserService:
             username=user.username,
             role=user.role or "user"
         )
+    @staticmethod
     async def register(data: RegisterRequest) -> TokenResponse:
         # 1. Kiểm tra tài khoản đã tồn tại chưa
         existing_user = await UserModel.find_one(UserModel.email == data.email)
@@ -75,6 +77,7 @@ class UserService:
             role=new_user.role
         )
 
+    @staticmethod
     async def get_profile(current_user: dict) -> UserProfileResponse:
         user_id = current_user.get("_id")
         if not user_id:
