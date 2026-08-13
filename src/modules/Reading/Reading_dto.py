@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
@@ -202,4 +203,5 @@ class ReadingVocabularyBookmarkResponse(BaseModel):
     session_id: str
     word: str
     context: Optional[str] = None
-    created_at: Optional[str] = None
+    created_at: Optional[str] = None
+

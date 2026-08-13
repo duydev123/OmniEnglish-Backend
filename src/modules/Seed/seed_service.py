@@ -14,14 +14,17 @@ from models.Listening import (
     UserListeningSessionModel
 )
 from .reading_mock import MOCK_READING_PASSAGES
-from .listening_mock import MOCK_LISTENING_PASSAGES
 
 
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel
+from .speaking_mock import MOCK_SPEAKING_DATA
+
+
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
+
+# 2. Thêm import mock data ở đầu file
+from .shadowing_mock import MOCK_SHADOWING_DATA
 class SeedService:
-    
-    # ==========================================
-    # SEED READING
-    # ==========================================
     async def seed_reading_only(self) -> dict:
         """Seed dữ liệu Reading"""
         # (original reading implementation is unchanged, we just need to keep this placeholder / structure)
@@ -42,7 +45,6 @@ class SeedService:
             "fill_blanks": 0,
             "true_false_not_given": 0
         }
-        
         # 2. Loop qua danh sách Passage mock và lưu vào DB
         for item in MOCK_READING_PASSAGES:
             passage = ReadingPassageModel(**item["passage"])
@@ -76,8 +78,7 @@ class SeedService:
 
         return {
             "status": "success",
-            "message": f"🌱 Successfully seeded {inserted_count} Reading Passages!",
-            "stats": stats
+            "message": f"🌱 Successfully seeded {inserted_count} Reading Passages and their questions!"
         }
 
     # ==========================================
@@ -98,66 +99,52 @@ class SeedService:
             "audio_segments": 0,
             "multiple_choices": 0,
             "completions": 0
+
+    async def seed_speaking_only(self) -> dict:
+        # 1. Xóa dữ liệu Speaking cũ
+        await SpeakingTopicModel.delete_all()
+        await SpeakingPromptModel.delete_all()
+        await UserSpeakingTestSessionModel.delete_all()
+
+        inserted_count = {
+            "topics": 0,
+            "prompts": 0
+        }
+
+        # 2. Duyệt qua mảng mock data và lưu vào DB
+        for item in MOCK_SPEAKING_DATA:
+            # Tạo Topic
+            topic_doc = SpeakingTopicModel(**item["topic"])
+            await topic_doc.insert()
+            inserted_count["topics"] += 1
+
+            # Tạo Prompts (Liên kết với Topic vừa tạo)
+            for prompt_data in item["prompts"]:
+                prompt_doc = SpeakingPromptModel(
+                    topic_id=topic_doc, # Truyền Object/Link vào đây
+                    **prompt_data
+                )
+                await prompt_doc.insert()
+                inserted_count["prompts"] += 1
+
+        return {
+            "status": "success",
+            "message": f"Successfully seeded {inserted_count['topics']} Speaking Topics and {inserted_count['prompts']} Prompts!"
         }
         
-        # 2. Loop qua danh sách Passage mock và lưu vào DB
-        for item in MOCK_LISTENING_PASSAGES:
-            passage = ListeningPassageModel(**item["passage"])
-            await passage.insert()
+    async def seed_shadowing_only(self) -> dict:
+        # Xóa sạch data cũ để tránh trùng lặp khi seed nhiều lần
+        await ShadowingSentenceModel.delete_all()
+        
+        inserted_count = 0
+        
+        # Lặp qua mảng mock data và đẩy vào Database
+        for item in MOCK_SHADOWING_DATA:
+            doc = ShadowingSentenceModel(**item)
+            await doc.insert()
             inserted_count += 1
-            stats["passages"] += 1
-
-            # Insert Audio Segments first
-            segment_key_to_doc = {}
-            for seg in item.get("audio_segments", []):
-                key = seg.pop("key", None)
-                doc = ListeningAudioSegmentModel(passage_id=passage, **seg)
-                await doc.insert()
-                stats["audio_segments"] += 1
-                if key:
-                    segment_key_to_doc[key] = doc
-
-            # Insert Multiple Choices
-            for mc in item.get("multiple_choices", []):
-                audio_key = mc.pop("audio_segment_key", None)
-                audio_seg = segment_key_to_doc.get(audio_key) if audio_key else None
-                doc = ListeningMultipleChoiceModel(
-                    passage_id=passage,
-                    audio_segment_id=audio_seg,
-                    **mc
-                )
-                await doc.insert()
-                stats["multiple_choices"] += 1
-
-            # Insert Completions
-            for comp in item.get("completions", []):
-                audio_key = comp.pop("audio_segment_key", None)
-                audio_seg = segment_key_to_doc.get(audio_key) if audio_key else None
-                doc = ListeningCompletionModel(
-                    passage_id=passage,
-                    audio_segment_id=audio_seg,
-                    **comp
-                )
-                await doc.insert()
-                stats["completions"] += 1
-
+            
         return {
             "status": "success",
-            "message": f"🌱 Successfully seeded {inserted_count} Listening Passages!",
-            "stats": stats
-        }
-
-    # ==========================================
-    # SEED TẤT CẢ (READING + LISTENING)
-    # ==========================================
-    async def seed_all(self) -> dict:
-        """Seed tất cả dữ liệu (Reading + Listening)"""
-        reading_result = await self.seed_reading_only()
-        listening_result = await self.seed_listening_only()
-        
-        return {
-            "status": "success",
-            "message": "🌱 Successfully seeded ALL data (Reading + Listening)!",
-            "reading": reading_result,
-            "listening": listening_result
+            "message": f"Successfully seeded {inserted_count} Shadowing Sentences!"
         }

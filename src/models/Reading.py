@@ -1,3 +1,4 @@
+
 from datetime import datetime, UTC
 from typing import Dict, List, Optional
 from beanie import Document, Link
@@ -108,4 +109,5 @@ class ReadingVocabularyBookmarkModel(Document):
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
-        name = "reading_vocabulary_bookmarks"
+        name = "reading_vocabulary_bookmarks"
+

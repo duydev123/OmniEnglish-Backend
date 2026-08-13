@@ -28,6 +28,16 @@ from modules.Speaking import speaking_controller
 from modules.Vocabulary import vocab_controller
 from modules.Auth import auth_controller
 from modules.Seed import seed_controller
+from models.VocabularyCollectionModel import UserProgressModel, UserWordStatusModel, VocabularyCollectionModel
+from models.Paragraph import WordModel
+
+# from models.Listening import (
+#     ListeningPassageModel,
+#     ListeningMultipleChoiceModel,
+#     ListeningCompletionModel,
+#     UserListeningSessionModel,
+#     UserDictationSessionModel
+# )
 
 from models.Reading import (
     ReadingPassageModel,
@@ -46,6 +56,8 @@ from models.Listening import (
     UserListeningSessionModel
 )
 
+from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -71,9 +83,30 @@ async def lifespan(app: FastAPI):
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
-        ],
+            UserDictationSessionModel,
+            VocabularyCollectionModel,
+            WordModel,
+            UserWordStatusModel,
+            UserProgressModel,
+            WritingPromptModel,
+            WritingSubmissionModel,
+            #begin speaking 
+            SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
+            #end speaking 
+        ]
     )
     print("Database connected successfully!")
+
+
+    try:
+        from modules.Seed.seed_service import SeedService
+        if await ReadingPassageModel.count() == 0:
+            await SeedService().seed_reading_only()
+        from modules.Writing.writing_seed import seed_writing_prompts
+        await seed_writing_prompts()
+    except Exception as e:
+        print("Auto seed status:", e)
+
     yield
     client.close()
 
@@ -96,6 +129,7 @@ ALLOWED_ORIGINS = os.getenv(
     "ALLOWED_ORIGINS",
     "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
 ).split(",")
+
 
 app.add_middleware(
     CORSMiddleware,

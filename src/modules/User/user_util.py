@@ -2,11 +2,13 @@ import os
 import bcrypt
 import jwt
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 SECRET_KEY = os.getenv("SECRET_KEY", "OMNI_ENGLISH_SUPER_SECRET_KEY")
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 class UserUtil:
     @staticmethod
@@ -57,3 +59,10 @@ class UserUtil:
                 detail="Token không hợp lệ hoặc đã hết hạn!"
             )
         return payload
+
+    @staticmethod
+    async def ProtectOptional(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security_optional)) -> dict | None:
+        if not credentials:
+            return None
+        token = credentials.credentials
+        return UserUtil.decode_token(token)

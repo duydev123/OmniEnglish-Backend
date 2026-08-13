@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
@@ -149,4 +150,5 @@ class ListeningSubmitResponse(BaseModel):
     spelling_tip: Optional[str] = None             # Mẹo chính tả
     listening_insight: Optional[str] = None        # Nhận xét AI
     audio_url: Optional[str] = None
-    interactive_transcript: Optional[List[TranscriptLine]] = None
+    interactive_transcript: Optional[List[TranscriptLine]] = None
+
