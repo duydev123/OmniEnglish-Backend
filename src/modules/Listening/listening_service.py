@@ -117,7 +117,6 @@ class ListeningService:
             UserListeningSessionModel.session_type == session_type,
             UserListeningSessionModel.status == "IN_PROGRESS"
         )
-        
         if existing_session:
             return existing_session
         
