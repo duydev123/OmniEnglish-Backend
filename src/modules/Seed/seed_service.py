@@ -6,7 +6,13 @@ from models.Reading import (
     ReadingTrueFalseNotGivenModel,
     UserReadingSessionModel
 )
-
+from models.Listening import (
+    ListeningPassageModel,
+    ListeningAudioSegmentModel,
+    ListeningMultipleChoiceModel,
+    ListeningCompletionModel,
+    UserListeningSessionModel
+)
 from .reading_mock import MOCK_READING_PASSAGES
 
 
@@ -20,7 +26,10 @@ from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakin
 from .shadowing_mock import MOCK_SHADOWING_DATA
 class SeedService:
     async def seed_reading_only(self) -> dict:
-        # 1. Xóa sạch dữ liệu cũ liên quan đến Reading
+        """Seed dữ liệu Reading"""
+        # (original reading implementation is unchanged, we just need to keep this placeholder / structure)
+
+        # 1. Xóa sạch dữ liệu cũ
         await ReadingPassageModel.delete_all()
         await ReadingTrueFalseNotGivenModel.delete_all()
         await ReadingHeadingMatchingModel.delete_all()
@@ -72,6 +81,24 @@ class SeedService:
             "message": f"🌱 Successfully seeded {inserted_count} Reading Passages and their questions!"
         }
 
+    # ==========================================
+    # SEED LISTENING (THÊM MỚI)
+    # ==========================================
+    async def seed_listening_only(self) -> dict:
+        """Seed dữ liệu Listening"""
+        # 1. Xóa sạch dữ liệu cũ
+        await ListeningPassageModel.delete_all()
+        await ListeningAudioSegmentModel.delete_all()
+        await ListeningMultipleChoiceModel.delete_all()
+        await ListeningCompletionModel.delete_all()
+        await UserListeningSessionModel.delete_all()
+
+        inserted_count = 0
+        stats = {
+            "passages": 0,
+            "audio_segments": 0,
+            "multiple_choices": 0,
+            "completions": 0
 
     async def seed_speaking_only(self) -> dict:
         # 1. Xóa dữ liệu Speaking cũ

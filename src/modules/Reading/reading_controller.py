@@ -1,18 +1,11 @@
-import random
-from datetime import datetime, UTC
-from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import Dict, List
-from beanie import PydanticObjectId
+import logging
+import traceback
+from fastapi import APIRouter, HTTPException, Query
+from typing import Dict, Optional
+from .reading_service import ReadingService
 
-from modules.User.user_util import UserUtil
-from models.Reading import (
-    ReadingPassageModel,
-    ReadingMultipleChoiceModel,
-    ReadingHeadingMatchingModel, 
-    ReadingFillBlankModel,
-    ReadingTrueFalseNotGivenModel,
-    UserReadingSessionModel
-)
+logger = logging.getLogger("omni_english")
+
 from .Reading_dto import (
     ReadingSessionStartResponse,
     MultipleChoiceResponse,
@@ -20,8 +13,16 @@ from .Reading_dto import (
     FillBlankResponse,
     TrueFalseNotGivenResponse,
     ReadingDraftRequest,
+    ReadingSubmitRequest,
     ReadingSubmitResponse,
-    QuestionResult
+    ReadingSessionDetailResponse,
+    PassageListResponse,
+    PassageDetailResponse,
+    UserHistoryListResponse,
+    UserReadingStatsResponse,
+    ReadingSessionReviewResponse,
+    ReadingVocabularyBookmarkRequest,
+    ReadingVocabularyBookmarkResponse
 )
 
 router = APIRouter()
@@ -47,41 +48,39 @@ async def get_all_reading_passages(
     ]
 
 @router.get(path="/passages/{passage_id}/start", response_model=ReadingSessionStartResponse)
-async def start_reading_session(
-    passage_id: str,
-    current_user: dict = Depends(UserUtil.Protect)
-):
-    # 1. Lấy passage
-    passage = await ReadingPassageModel.get(passage_id)
-    if not passage:
-        raise HTTPException(status_code=404, detail="Passage not found")
-    
-    # Lấy user_id thực tế từ JWT Token
-    user_id = current_user.get("_id") or current_user.get("id")
-    existing_session = await UserReadingSessionModel.find_one(
-        UserReadingSessionModel.user_id == user_id,
-        UserReadingSessionModel.passage_id.id == PydanticObjectId(passage_id),
-        UserReadingSessionModel.status == "IN_PROGRESS"
-    )
-    
-    if existing_session:
-        # Nếu có session đang làm dở, trả về session đó
-        session = existing_session
-    else:
-        # Tạo session mới
-        session = UserReadingSessionModel(
-            user_id=user_id,
-            passage_id=passage,
+async def start_reading_session(passage_id: str):
+    """Bắt đầu session làm bài Reading"""
+    try:
+        passage = await reading_service.get_passage(passage_id)
+        user_id = "test_user_001"
+        session = await reading_service.get_or_create_session(user_id, passage_id)
+        
+        multiple_choices = await reading_service.format_multiple_choices(passage_id)
+        heading_matchings = await reading_service.format_heading_matchings(passage, passage_id)
+        fill_blanks = await reading_service.format_fill_blanks(passage_id)
+        true_false_not_given = await reading_service.format_true_false_not_given(passage_id)
+        
+        return ReadingSessionStartResponse(
+            session_id=str(session.id),
+            title=passage.title,
+            content=passage.content,
+            image_url=passage.image_url,
+            learning_tip=passage.learning_tip,
+            completed_questions=session.completed_questions,
             total_questions=passage.total_questions,
-            time_remaining_seconds=passage.time_limit_minutes * 60,
-            attempt_number=1,
-            status="IN_PROGRESS"
+            time_remaining_seconds=session.time_remaining_seconds,
+            multiple_choices=multiple_choices,
+            heading_matchings=heading_matchings,
+            fill_blanks=fill_blanks,
+            true_false_not_given=true_false_not_given,
+            user_answers=session.user_answers
         )
-        await session.insert()
-    # 3. Lấy các câu hỏi
-    multiple_choices = await ReadingMultipleChoiceModel.find(
-        ReadingMultipleChoiceModel.passage_id.id == PydanticObjectId(passage_id)
-    ).to_list()
+    
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[start_reading_session] passage_id={passage_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
     heading_matchings = await ReadingHeadingMatchingModel.find(
         ReadingHeadingMatchingModel.passage_id.id == PydanticObjectId(passage_id)
@@ -170,29 +169,32 @@ async def start_reading_session(
 @router.patch(path="/sessions/{session_id}/draft")
 async def save_reading_draft(session_id: str, payload: ReadingDraftRequest):
     """Lưu nháp bài đọc khi user đang làm dở"""
-     # Lấy session từ database
-    session = await UserReadingSessionModel.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    # Cập nhật session
-    session.time_remaining_seconds = payload.time_remaining_seconds
-    session.user_answers = payload.user_answers
-    
-    # Tính số câu đã làm
-    completed = len(payload.user_answers)
-    session.completed_questions = min(completed, session.total_questions)
-    
-    session.updated_at = datetime.now(UTC)
-    await session.save()
-    
-    return {
-        "success": True,
-        "message": "Draft saved successfully",
-        "session_id": session_id,
-        "completed_questions": session.completed_questions,
-        "total_questions": session.total_questions
-    }
+    try:
+        result = await reading_service.save_draft(
+            session_id=session_id,
+            time_remaining_seconds=payload.time_remaining_seconds,
+            user_answers=payload.user_answers
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[save_reading_draft] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/sessions/{session_id}/draft")
+async def get_reading_draft(session_id: str):
+    """Lấy nháp bài đọc đã lưu"""
+    try:
+        result = await reading_service.get_draft(session_id)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[get_reading_draft] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
 
 @router.post(path="/sessions/{session_id}/submit")
 async def submit_reading_answers(session_id: str, payload: dict):
@@ -240,78 +242,114 @@ async def submit_reading_answers(session_id: str, payload: dict):
             user_answer=user_answer,
             correct_answer=mc.correct_answer
         )
-    
-    # 3. Chấm Heading Matching
-    for hm in heading_matchings:
-        total_questions += len(hm.correct_matches)
-        for paragraph_id, correct_heading in hm.correct_matches.items():
-            user_answer = user_answers.get(paragraph_id, "")
-            is_correct = user_answer == correct_heading
-            if is_correct:
-                score += 1
-            detailed_results[paragraph_id] = QuestionResult(
-                is_correct=is_correct,
-                user_answer=user_answer,
-                correct_answer=correct_heading
-            )
-    
-    # 4. Chấm Fill-in-the-blank
-    for fb in fill_blanks:
-        total_questions += len(fb.blanks)
-        for blank in fb.blanks:
-            blank_id = blank["blank_id"]
-            correct_answer = blank["correct_answer"]
-            user_answer = user_answers.get(blank_id, "")
-            
-            if fb.case_sensitive:
-                is_correct = user_answer == correct_answer
-            else:
-                is_correct = user_answer.lower().strip() == correct_answer.lower().strip()
-            
-            if is_correct:
-                score += 1
-            
-            detailed_results[blank_id] = QuestionResult(
-                is_correct=is_correct,
-                user_answer=user_answer,
-                correct_answer=correct_answer
-            )
-    for tf in true_false_not_given:
-        for item in tf.statements:
-            total_questions += 1
-            statement_id = f"tf_{tf.order}_{tf.statements.index(item)}"  # Tạo ID duy nhất
-            # Hoặc dùng index: statement_id = f"statement_{tf.statements.index(item)}"
-            
-            correct_answer = item["correct_answer"].upper()  # TRUE/FALSE/NOT GIVEN
-            user_answer = user_answers.get(statement_id, "").upper()
-            
-            is_correct = user_answer == correct_answer
-            if is_correct:
-                score += 1
-            
-            detailed_results[statement_id] = {
-                "is_correct": is_correct,
-                "user_answer": user_answer,
-                "correct_answer": correct_answer,
-                "statement": item["statement"]  # Thêm để frontend biết câu nào
-            }
-    
-    # Cập nhật session
-    session.score = score
-    session.status = "COMPLETED"
-    session.user_answers = user_answers
-    session.completed_questions = total_questions
-    session.time_remaining_seconds = time_remaining
-    session.updated_at = datetime.now(UTC)
-    await session.save()
-    
-    # Tính accuracy
-    accuracy_rate = (score / total_questions) * 100 if total_questions > 0 else 0
-    
-    return ReadingSubmitResponse(
-        status="COMPLETED",
-        score=score,
-        total_questions=total_questions,
-        accuracy_rate=round(accuracy_rate, 2),
-        detailed_results=detailed_results
-    )
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[submit_reading_answers] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/sessions/{session_id}", response_model=ReadingSessionDetailResponse)
+async def get_session_details(session_id: str):
+    """Lấy toàn bộ thông tin session (tiến độ, điểm số, v.v.)"""
+    try:
+        return await reading_service.get_session_details(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[get_session_details] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/passages", response_model=PassageListResponse)
+async def get_passages(
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
+    level: Optional[str] = Query(default=None),
+    topic: Optional[str] = Query(default=None),
+    question_type: Optional[str] = Query(default=None)
+):
+    """Lấy danh sách các bài đọc có sẵn"""
+    try:
+        return await reading_service.get_passages(page=page, limit=limit, level=level, topic=topic, question_type=question_type)
+    except Exception as e:
+        logger.error(f"[get_passages]\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/passages/{passage_id}", response_model=PassageDetailResponse)
+async def get_passage_detail(passage_id: str):
+    """Lấy thông tin chi tiết của một passage"""
+    try:
+        return await reading_service.get_passage_detail(passage_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[get_passage_detail] passage_id={passage_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/users/{user_id}/history", response_model=UserHistoryListResponse)
+async def get_user_history(
+    user_id: str,
+    page: int = Query(default=1, ge=1),
+    limit: int = Query(default=10, ge=1, le=100),
+    status: Optional[str] = Query(default=None)
+):
+    """Lấy danh sách các bài đọc user đã làm"""
+    try:
+        return await reading_service.get_user_history(user_id=user_id, page=page, limit=limit, status=status)
+    except Exception as e:
+        logger.error(f"[get_user_history] user_id={user_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.delete(path="/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Hủy session đang làm dở (nếu user muốn bắt đầu lại)"""
+    try:
+        return await reading_service.delete_session(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[delete_session] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/users/{user_id}/stats", response_model=UserReadingStatsResponse)
+async def get_user_stats(user_id: str):
+    """Lấy thống kê tổng quan về performance của user trong Reading"""
+    try:
+        return await reading_service.get_user_stats(user_id)
+    except Exception as e:
+        logger.error(f"[get_user_stats] user_id={user_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get(path="/sessions/{session_id}/review", response_model=ReadingSessionReviewResponse)
+async def get_session_review(session_id: str):
+    """Lấy chi tiết bài review (đã có trong /submit nhưng dùng riêng)"""
+    try:
+        return await reading_service.get_session_review(session_id)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[get_session_review] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post(path="/sessions/{session_id}/vocabulary", response_model=ReadingVocabularyBookmarkResponse)
+async def bookmark_vocabulary(session_id: str, payload: ReadingVocabularyBookmarkRequest):
+    """Lưu từ vựng user muốn ghi nhớ trong bài đọc"""
+    try:
+        return await reading_service.bookmark_vocabulary(
+            session_id=session_id,
+            word=payload.word,
+            context=payload.context
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"[bookmark_vocabulary] session_id={session_id}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

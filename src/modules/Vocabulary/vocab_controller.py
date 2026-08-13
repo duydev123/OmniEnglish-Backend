@@ -26,6 +26,7 @@ from .vocab_service import (
     fetch_ipa_for_word,
     fetch_word_details
 )
+from core.mock_registry import mock_registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

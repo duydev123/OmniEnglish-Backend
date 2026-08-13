@@ -22,6 +22,21 @@ class ListeningPassageModel(Document):
     class Settings:
         name = "listening_passages"
 
+
+class ListeningAudioSegmentModel(Document):
+    passage_id: Link[ListeningPassageModel]
+    audio_file_url: Optional[str] = None
+    start_time_ms: int
+    end_time_ms: int
+    transcript: str
+    transcript_json: Optional[List[Dict]] = Field(default_factory=list)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "listening_audio_segments"
+
+
 # ==========================================
 # 2. CÂU HỎI CHO COMPREHENSION
 # ==========================================
@@ -32,9 +47,12 @@ class ListeningMultipleChoiceModel(Document):
     options: List[str] = Field(..., min_items=2)
     correct_answer: str = Field(..., min_length=1)
     
-    timestamp_clip: Optional[str] = None
-    learning_hint: Optional[str] = None
-    competency_type: Optional[str] = None
+    # BỔ SUNG CHO BÁO CÁO REVIEW:
+    timestamp_clip: Optional[str] = None                      # VD: "00:45" (Nút REPLAY CLIP)
+    learning_hint: Optional[str] = None                       # Gợi ý bài học / giải thích đáp án
+    competency_type: Optional[str] = None                     # "Global Understanding", "Inference & Tone"...
+    audio_segment_id: Optional[Link[ListeningAudioSegmentModel]] = None
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -46,6 +64,7 @@ class ListeningCompletionModel(Document):
     template_text: str = Field(..., min_length=1)  
     correct_answers: Dict[str, str] = Field(...)
     case_sensitive: bool = Field(default=False)
+    audio_segment_id: Optional[Link[ListeningAudioSegmentModel]] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:

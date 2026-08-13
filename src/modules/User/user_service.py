@@ -55,7 +55,9 @@ def build_user_profile_response(user: UserModel, token: Optional[str] = None) ->
 
 
 class UserService:
-    async def login(self, data: LoginRequest) -> UserProfileResponse:
+    @staticmethod
+    async def login(data: LoginRequest) -> TokenResponse:
+
         # 1. Tìm user theo email
         user = await UserModel.find_one(UserModel.email == data.email)
         if not user:
@@ -75,7 +77,15 @@ class UserService:
         token = UserUtil.CreateToken(user)
         return build_user_profile_response(user, token=token)
 
-    async def register(self, data: RegisterRequest) -> UserProfileResponse:
+        return TokenResponse(
+            access_token=token,
+            token_type="bearer",
+            user_id=str(user.id),
+            username=user.username,
+            role=user.role or "user"
+        )
+    @staticmethod
+    async def register(data: RegisterRequest) -> TokenResponse:
         # 1. Kiểm tra tài khoản đã tồn tại chưa
         existing_user = await UserModel.find_one(UserModel.email == data.email)
         if existing_user:
@@ -104,7 +114,16 @@ class UserService:
         token = UserUtil.CreateToken(new_user)
         return build_user_profile_response(new_user, token=token)
 
-    async def get_profile(self, current_user: dict) -> UserProfileResponse:
+        return TokenResponse(
+            access_token=token,
+            token_type="bearer",
+            user_id=str(new_user.id),
+            username=new_user.username,
+            role=new_user.role
+        )
+
+    @staticmethod
+    async def get_profile(current_user: dict) -> UserProfileResponse:
         user_id = current_user.get("_id")
         if not user_id:
             raise HTTPException(

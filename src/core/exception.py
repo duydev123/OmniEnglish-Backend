@@ -1,12 +1,19 @@
+import logging
+import traceback
 from fastapi import Request, status, FastAPI
 from fastapi.exceptions import HTTPException, RequestValidationError
 from fastapi.responses import JSONResponse
+
+logger = logging.getLogger("omni_english")
 
 def setup_exception_handlers(app: FastAPI):
     
     # 1. Bắt các lỗi chủ động raise 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
+        logger.warning(
+            f"[HTTP {exc.status_code}] {request.method} {request.url} → {exc.detail}"
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={
@@ -34,12 +41,17 @@ def setup_exception_handlers(app: FastAPI):
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
-        print(f"Unhandled System Error: {exc}")
+        tb = traceback.format_exc()
+        logger.error(
+            f"[UNHANDLED ERROR] {request.method} {request.url}\n"
+            f"Exception: {type(exc).__name__}: {exc}\n"
+            f"Traceback:\n{tb}"
+        )
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "success": False,
-                "message": "Lỗi hệ thống nội bộ! ",
+                "message": f"Lỗi hệ thống: {type(exc).__name__}: {str(exc)}",
                 "status_code": status.HTTP_500_INTERNAL_SERVER_ERROR
             },
         )
