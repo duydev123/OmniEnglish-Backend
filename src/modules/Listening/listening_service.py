@@ -527,9 +527,11 @@ class ListeningService:
                 status=status
             ))
         
-        # Tính WPM (Words Per Minute)
-        # Giả sử average listening time = 1 phút cho 100 từ
-        wpm = int(correct_words / 1) if correct_words > 0 else 0
+        # Tính WPM (Words Per Minute) dựa trên thời gian thực tế
+        elapsed_minutes = (session.updated_at - session.start_at).total_seconds() / 60.0 if session.start_at else 1.0
+        if elapsed_minutes < 0.1:
+            elapsed_minutes = 0.1
+        wpm = int(correct_words / elapsed_minutes) if correct_words > 0 else 0
         
         # Tính accuracy
         accuracy_rate = (correct_words / len(original_words)) * 100 if original_words else 0
