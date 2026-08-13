@@ -18,7 +18,7 @@ from main import app
 from beanie import init_beanie
 
 # Import các models
-from models.UserModel import UserModel, UserStatsModel
+from models.UserModel import UserModel
 from models.Reading import (
     ReadingPassageModel,
     ReadingMultipleChoiceModel,
@@ -38,10 +38,8 @@ from models.Listening import (
 
 @pytest.fixture(scope="session")
 def event_loop():
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
+    import asyncio
+    loop = asyncio.new_event_loop()
     yield loop
     loop.close()
 
@@ -52,7 +50,6 @@ async def init_beanie_db(event_loop):
         database=db,
         document_models=[
             UserModel,
-            UserStatsModel,
             ReadingPassageModel,
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,

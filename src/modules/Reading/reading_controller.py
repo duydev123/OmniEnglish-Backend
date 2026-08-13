@@ -1,10 +1,20 @@
 import logging
 import traceback
+from datetime import datetime, UTC
 from fastapi import APIRouter, HTTPException, Query
 from typing import Dict, Optional
 from .reading_service import ReadingService
 
 logger = logging.getLogger("omni_english")
+
+from models.Reading import (
+    ReadingPassageModel,
+    ReadingMultipleChoiceModel,
+    ReadingHeadingMatchingModel,
+    ReadingFillBlankModel,
+    ReadingTrueFalseNotGivenModel,
+    UserReadingSessionModel
+)
 
 from .Reading_dto import (
     ReadingSessionStartResponse,
@@ -22,30 +32,13 @@ from .Reading_dto import (
     UserReadingStatsResponse,
     ReadingSessionReviewResponse,
     ReadingVocabularyBookmarkRequest,
-    ReadingVocabularyBookmarkResponse
+    ReadingVocabularyBookmarkResponse,
+    QuestionResult
 )
 
 router = APIRouter()
+reading_service = ReadingService()
 
-@router.get(path="/passages")
-async def get_all_reading_passages(
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=50)
-):
-    """Lấy danh sách các bài Reading có sẵn (có phân trang) cho Practice Module"""
-    skip = (page - 1) * limit
-    passages = await ReadingPassageModel.find_all().skip(skip).limit(limit).to_list()
-    return [
-        {
-            "id": str(p.id),
-            "title": p.title,
-            "image_url": getattr(p, "image_url", ""),
-            "total_questions": p.total_questions,
-            "time_limit_minutes": p.time_limit_minutes,
-            "difficulty": getattr(p, "difficulty", "Intermediate")
-        }
-        for p in passages
-    ]
 
 @router.get(path="/passages/{passage_id}/start", response_model=ReadingSessionStartResponse)
 async def start_reading_session(passage_id: str):
@@ -199,50 +192,125 @@ async def get_reading_draft(session_id: str):
 @router.post(path="/sessions/{session_id}/submit")
 async def submit_reading_answers(session_id: str, payload: dict):
     """Chấm điểm bài đọc và trả về kết quả"""
-    # Lấy session
-    session = await UserReadingSessionModel.get(session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        # Lấy session
+        session = await UserReadingSessionModel.get(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
 
-    user_answers = payload.get("user_answers", {})  # ← Lấy từ dict
-    time_remaining = payload.get("time_remaining_seconds", 0)
-    # Lấy passage và các câu hỏi
-    passage = await session.passage_id.fetch()
-    
-    # Lấy tất cả câu hỏi
-    multiple_choices = await ReadingMultipleChoiceModel.find(
-        ReadingMultipleChoiceModel.passage_id.id == passage.id
-    ).to_list()
-    
-    heading_matchings = await ReadingHeadingMatchingModel.find(
-        ReadingHeadingMatchingModel.passage_id.id == passage.id
-    ).to_list()
-    
-    fill_blanks = await ReadingFillBlankModel.find(
-        ReadingFillBlankModel.passage_id.id == passage.id
-    ).to_list()
-    true_false_not_given = await ReadingTrueFalseNotGivenModel.find(
-        ReadingTrueFalseNotGivenModel.passage_id.id == passage.id
-    ).to_list()
-    # Khởi tạo kết quả
-    detailed_results = {}
-    score = 0
-    total_questions = 0
-    
-    # 1. Chấm Multiple Choice
-    for mc in multiple_choices:
-        total_questions += 1
-        question_id = str(mc.id)
-        user_answer = user_answers.get(question_id, "")
-        is_correct = user_answer == mc.correct_answer
-        if is_correct:
-            score += 1
-        detailed_results[question_id] = QuestionResult(
-            is_correct=is_correct,
-            user_answer=user_answer,
-            correct_answer=mc.correct_answer
+        user_answers = payload.get("user_answers", {})  # ← Lấy từ dict
+        time_remaining = payload.get("time_remaining_seconds", 0)
+        # Lấy passage và các câu hỏi
+        passage = await session.passage_id.fetch()
+        
+        # Lấy tất cả câu hỏi
+        multiple_choices = await ReadingMultipleChoiceModel.find(
+            ReadingMultipleChoiceModel.passage_id.id == passage.id
+        ).to_list()
+        
+        heading_matchings = await ReadingHeadingMatchingModel.find(
+            ReadingHeadingMatchingModel.passage_id.id == passage.id
+        ).to_list()
+        
+        fill_blanks = await ReadingFillBlankModel.find(
+            ReadingFillBlankModel.passage_id.id == passage.id
+        ).to_list()
+        true_false_not_given = await ReadingTrueFalseNotGivenModel.find(
+            ReadingTrueFalseNotGivenModel.passage_id.id == passage.id
+        ).to_list()
+        # Khởi tạo kết quả
+        detailed_results = {}
+        score = 0
+        total_questions = 0
+        
+        # 1. Chấm Multiple Choice
+        for mc in multiple_choices:
+            total_questions += 1
+            question_id = str(mc.id)
+            user_answer = user_answers.get(question_id, "")
+            is_correct = user_answer == mc.correct_answer
+            if is_correct:
+                score += 1
+            detailed_results[question_id] = QuestionResult(
+                is_correct=is_correct,
+                user_answer=user_answer,
+                correct_answer=mc.correct_answer
+            )
+        
+        # 3. Chấm Heading Matching
+        for hm in heading_matchings:
+            total_questions += len(hm.correct_matches)
+            for paragraph_id, correct_heading in hm.correct_matches.items():
+                user_answer = user_answers.get(paragraph_id, "")
+                is_correct = user_answer == correct_heading
+                if is_correct:
+                    score += 1
+                detailed_results[paragraph_id] = QuestionResult(
+                    is_correct=is_correct,
+                    user_answer=user_answer,
+                    correct_answer=correct_heading
+                )
+        
+        # 4. Chấm Fill-in-the-blank
+        for fb in fill_blanks:
+            total_questions += len(fb.blanks)
+            for blank in fb.blanks:
+                blank_id = blank["blank_id"]
+                correct_answer = blank["correct_answer"]
+                user_answer = user_answers.get(blank_id, "")
+                
+                if fb.case_sensitive:
+                    is_correct = user_answer == correct_answer
+                else:
+                    is_correct = user_answer.lower().strip() == correct_answer.lower().strip()
+                
+                if is_correct:
+                    score += 1
+                
+                detailed_results[blank_id] = QuestionResult(
+                    is_correct=is_correct,
+                    user_answer=user_answer,
+                    correct_answer=correct_answer
+                )
+        for tf in true_false_not_given:
+            for item in tf.statements:
+                total_questions += 1
+                statement_id = f"tf_{tf.order}_{tf.statements.index(item)}"  # Tạo ID duy nhất
+                # Hoặc dùng index: statement_id = f"statement_{tf.statements.index(item)}"
+                
+                correct_answer = item["correct_answer"].upper()  # TRUE/FALSE/NOT GIVEN
+                user_answer = user_answers.get(statement_id, "").upper()
+                
+                is_correct = user_answer == correct_answer
+                if is_correct:
+                    score += 1
+                
+                detailed_results[statement_id] = {
+                    "is_correct": is_correct,
+                    "user_answer": user_answer,
+                    "correct_answer": correct_answer,
+                    "statement": item["statement"]  # Thêm để frontend biết câu nào
+                }
+        
+        # Cập nhật session
+        session.score = score
+        session.status = "COMPLETED"
+        session.user_answers = user_answers
+        session.completed_questions = total_questions
+        session.time_remaining_seconds = time_remaining
+        session.updated_at = datetime.now(UTC)
+        await session.save()
+        
+        # Tính accuracy
+        accuracy_rate = (score / total_questions) * 100 if total_questions > 0 else 0
+        
+        return ReadingSubmitResponse(
+            status="COMPLETED",
+            score=score,
+            total_questions=total_questions,
+            accuracy_rate=round(accuracy_rate, 2),
+            detailed_results=detailed_results
         )
-        return result
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
