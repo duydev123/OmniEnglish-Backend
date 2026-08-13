@@ -1,22 +1,32 @@
-# models/Listening.py
 from datetime import datetime, UTC
-from typing import Dict, List, Optional, Literal, Any
-from beanie import Document, Link, PydanticObjectId
-from pydantic import Field, BaseModel
+from typing import Dict, List, Optional
+from beanie import Document, Link
+from pydantic import Field
+
 
 # ==========================================
-# 1. BẢNG ĐỀ THI & TRANSCRIPT (Gốc)
+# 1. BẢNG DỮ LIỆU ĐỀ THI & TRANSCRIPT (Gốc do Admin/System tạo)
 # ==========================================
 class ListeningPassageModel(Document):
-    title: str = Field(..., min_length=3)
-    unit_code: Optional[str] = None
-    audio_url: str = Field(..., min_length=1)
+    title: str = Field(..., min_length=3)                     # VD: "FIRST SNOWFALL" hoặc "Business Negotiation"
+    unit_code: Optional[str] = None                           # VD: "UNIT04"
+    audio_url: str = Field(..., min_length=1)                 # URL file mp3/audio
     
+    # BỔ SUNG BẢN TRANSCRIPT SONG NGỮ (Cho Màn hình Full Transcript Interactive)
+    # Example item: {
+    #    "start_time": "0:03", 
+    #    "end_time": "0:08", 
+    #    "en": "Today is November 26th.", 
+    #    "vi": "Hôm nay là ngày 26 tháng 11."
+    # }
     interactive_transcript: List[Dict[str, str]] = Field(default_factory=list)
+    
+    # Key Vocabulary
     key_vocabulary: List[Dict[str, str]] = Field(default_factory=list)
     
-    time_limit_minutes: int = Field(default=15)
-    total_questions: int = Field(default=20)
+    time_limit_minutes: int = Field(default=15)               
+    total_questions: int = Field(default=20)                  
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
@@ -38,7 +48,7 @@ class ListeningAudioSegmentModel(Document):
 
 
 # ==========================================
-# 2. CÂU HỎI CHO COMPREHENSION
+# 2. CÁC DẠNG CÂU HỎI LISTENING
 # ==========================================
 class ListeningMultipleChoiceModel(Document):
     passage_id: Link[ListeningPassageModel]  
@@ -58,6 +68,7 @@ class ListeningMultipleChoiceModel(Document):
     class Settings:
         name = "listening_multiple_choices"
 
+
 class ListeningCompletionModel(Document):
     passage_id: Link[ListeningPassageModel]  
     order: int = Field(default=2)
@@ -70,72 +81,52 @@ class ListeningCompletionModel(Document):
     class Settings:
         name = "listening_completions"
 
-# ==========================================
-# 3. MODEL LÀM BÀI COMPREHENSION (NGHE HIỂU)
-# ==========================================
-class UserAnswer(BaseModel):
-    question_id: PydanticObjectId
-    question_type: Literal["MULTIPLE_CHOICE", "COMPLETION"]
-    answer: Any
-    is_correct: Optional[bool] = None
 
-class ListeningResult(BaseModel):
-    score: float = 0
-    accuracy_rate: float = 0
-    xp_earned: int = 0
+# ==========================================
+# 3. BẢNG LƯU BÀI LÀM & BÁO CÁO REVIEW CỦA USER (Full Analytics)
+# ==========================================
+class UserListeningSessionModel(Document):
+    user_id: str = Field(..., min_length=1)
+    passage_id: Link[ListeningPassageModel]
+    
+    # "COMPREHENSION" hoặc "DICTATION"
+    session_type: str = Field(default="COMPREHENSION", pattern="^(COMPREHENSION|DICTATION)$")
+    completed_questions: int = Field(default=0)
+    # --- THỐNG KÊ CHUNG (Overall Stats) ---
+    accuracy_rate: float = Field(default=0.0)                 # VD: 85% hoặc 95%
+    score_summary: Optional[str] = None                       # VD: "17 out of 20 Correct"
+    xp_earned: int = Field(default=0)                         # VD: +250 XP
+
+    # --- ĐÀNH RIÊNG CHO CÂU HỎI LÝ THUYẾT (Analytics & Competency Matrix) ---
+    # Breakdown: {"Global Understanding": 100, "Specific Information": 80, "Inference & Tone": 75}
     competency_matrix: Dict[str, float] = Field(default_factory=dict)
+    
+    # Details từng câu hỏi: [{ "q_id": "...", "your_answer": "...", "correct_answer": "...", "is_correct": true }]
     detailed_question_review: List[Dict] = Field(default_factory=list)
 
-class UserListeningSessionModel(Document):
-    user_id: str
-    passage_id: Link[ListeningPassageModel]
-    session_type: Literal["COMPREHENSION"] = "COMPREHENSION"
-    status: Literal["IN_PROGRESS", "COMPLETED"] = "IN_PROGRESS"
+    # --- DÀNH RIÊNG CHO DICTATION (Chép chính tả Review) ---
+    words_typed: int = Field(default=0)                       # VD: 158 words
+    wpm: int = Field(default=0)                               # VD: 42 WPM
+    missed_contractions: int = Field(default=0)               # VD: 2
+
+    # Dữ liệu nháp cho cả comprehension và dictation
+    user_answers: Dict[str, str] = Field(default_factory=dict)
+    user_typed_text: str = Field(default="")
+    time_remaining_seconds: int = Field(default=0)
+    score: float = Field(default=0.0)
+    # Mảng so sánh từ gõ đúng/sai để tô màu Xanh/Đỏ trên UI:
+    # Example: [{"word": "strategy", "user_word": "stratagy", "is_correct": false}]
+    transcript_comparison: List[Dict] = Field(default_factory=list)
     
-    user_answers: List[UserAnswer] = Field(default_factory=list)
-    time_remaining_seconds: int = 0
-    result: Optional[ListeningResult] = None
-    
-    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    submitted_at: Optional[datetime] = None
+    spelling_tip: Optional[str] = None                        # Mẹo chính tả
+    listening_insight: Optional[str] = None                   # Nhận xét AI
+
+    status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
+    start_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "user_listening_sessions"
-        indexes = [
-            [("user_id", 1), ("passage_id", 1)]
-        ]
-
-# ==========================================
-# 4. MODEL LÀM BÀI DICTATION (CHÉP CHÍNH TẢ)
-# ==========================================
-class DictationSentenceHistory(BaseModel):
-    transcript_index: int
-    user_typed_text: str
-    is_correct: bool = False
-    accuracy_rate: float = 0.0
-    correct_words: int = 0
-    missed_contractions: int = 0
-    transcript_comparison: List[Dict] = Field(default_factory=list)
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-class UserDictationSessionModel(Document):
-    user_id: str
-    passage_id: Link[ListeningPassageModel]
-    status: Literal["IN_PROGRESS", "COMPLETED"] = "IN_PROGRESS"
-    
-    # Key là string của transcript_index (VD: "0", "1")
-    sentence_histories: Dict[str, DictationSentenceHistory] = Field(default_factory=dict)
-    
-    total_accuracy_rate: float = 0.0
-    total_words_typed: int = 0
-    
-    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    submitted_at: Optional[datetime] = None
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-
-    class Settings:
-        name = "user_dictation_sessions"
         indexes = [
             [("user_id", 1), ("passage_id", 1)]
         ]
