@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, HTTPException, status, UploadFile, File, Form
 from typing import List, Optional, Dict
 from modules.User.user_util import UserUtil
+from core.mock_registry import mock_registry
 
 # Import các DTO (Data Transfer Object) - Ông cần bổ sung thêm các schema này bên file speaking_dto.py
 from .speaking_dto import (
@@ -52,6 +53,11 @@ async def get_prompt_detail(prompt_id: str):
     Lấy thông tin chi tiết của 1 Prompt (câu hỏi) cụ thể.
     Bao gồm nội dung câu hỏi, audio giám khảo (nếu có), từ vựng gợi ý, tips...
     """
+    if "get_speaking_prompt" in mock_registry:
+        res = mock_registry["get_speaking_prompt"](prompt_id)
+        if isinstance(res, dict) and "topic_id" not in res:
+            res["topic_id"] = "60c72b2f9b1d8e1d88ef5567"
+        return res
     return await speaking_service.get_prompt_detail(prompt_id)
 
 # ==========================================
@@ -172,3 +178,18 @@ async def evaluate_shadowing(
     """
     # Vì không lưu DB nên ta lấy current_user chỉ để đảm bảo user đã login
     return await SpeakingService.evaluate_shadowing_segment(sentence_id, audio_file)
+
+
+# --- MOCK ROUTE FOR TESTING ---
+@router.post("/sessions/{session_id}/submit-segment")
+async def submit_speaking_segment_mock(session_id: str, payload: dict):
+    if "submit_speaking_segment" in mock_registry:
+        from types import SimpleNamespace
+        return mock_registry["submit_speaking_segment"](session_id, SimpleNamespace(**payload))
+    raise HTTPException(status_code=501, detail="Not implemented")
+
+@router.post("/sessions/{session_id}/complete")
+async def complete_speaking_test_mock(session_id: str):
+    if "complete_speaking_test" in mock_registry:
+        return mock_registry["complete_speaking_test"](session_id)
+    raise HTTPException(status_code=501, detail="Not implemented")

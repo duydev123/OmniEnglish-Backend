@@ -494,11 +494,12 @@ class ReadingService:
         items = []
         for s in sessions:
             passage = await s.passage_id.fetch()
+            has_passage = passage and hasattr(passage, "id")
             accuracy_rate = (s.score / s.total_questions * 100) if s.total_questions > 0 else 0
             items.append(UserHistoryItemResponse(
                 session_id=str(s.id),
-                passage_id=str(passage.id) if passage else "",
-                passage_title=passage.title if passage else "Unknown Passage",
+                passage_id=str(passage.id) if has_passage else "",
+                passage_title=passage.title if has_passage and hasattr(passage, "title") else "Unknown Passage",
                 score=s.score,
                 total_questions=s.total_questions,
                 accuracy_rate=round(accuracy_rate, 2),

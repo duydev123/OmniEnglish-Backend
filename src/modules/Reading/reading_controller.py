@@ -1,9 +1,10 @@
 import logging
 import traceback
 from datetime import datetime, UTC
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import Dict, Optional
 from .reading_service import ReadingService
+from modules.User.user_util import UserUtil
 
 logger = logging.getLogger("omni_english")
 
@@ -41,11 +42,11 @@ reading_service = ReadingService()
 
 
 @router.get(path="/passages/{passage_id}/start", response_model=ReadingSessionStartResponse)
-async def start_reading_session(passage_id: str):
+async def start_reading_session(passage_id: str, current_user: dict = Depends(UserUtil.Protect)):
     """Bắt đầu session làm bài Reading"""
     try:
         passage = await reading_service.get_passage(passage_id)
-        user_id = "test_user_001"
+        user_id = str(current_user.get("id") or current_user.get("_id") or "")
         session = await reading_service.get_or_create_session(user_id, passage_id)
         
         multiple_choices = await reading_service.format_multiple_choices(passage_id)

@@ -33,7 +33,8 @@ class VocabularyCollectionResponse(BaseModel):
 # --- Request Cập nhật trạng thái từng từ ---
 class UpdateWordStatusRequest(BaseModel):
     collection_id: str                                      
-    word_id: str                                               
+    word_id: Optional[str] = None
+    word: Optional[str] = None
     status: str = Field(..., pattern="^(LEARNING|MASTERED|NEEDS_REVIEW)$") 
 
 # --- Request Cập nhật Tiến độ chung bộ từ ---

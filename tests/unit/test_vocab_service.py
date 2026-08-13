@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
-sys.path.insert(0, os.path.dirname(__file__))
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src")))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
 from models.Paragraph import WordModel

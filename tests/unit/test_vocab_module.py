@@ -12,11 +12,9 @@ from pydantic import ValidationError
 
 # Ensure backend src directory is in Python path for module imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.abspath(os.path.join(current_dir, ".."))
-sys.path.insert(0, parent_dir)
-sys.path.insert(0, current_dir)
-if os.path.exists(os.path.join(parent_dir, "src")):
-    sys.path.insert(0, os.path.join(parent_dir, "src"))
+parent_dir = os.path.abspath(os.path.join(current_dir, "..", ".."))
+sys.path.insert(0, os.path.join(parent_dir, "src"))
+
 
 from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
 from models.Paragraph import WordModel, WordType

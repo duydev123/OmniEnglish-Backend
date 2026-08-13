@@ -53,7 +53,8 @@ from models.Listening import (
     ListeningAudioSegmentModel,
     ListeningMultipleChoiceModel,
     ListeningCompletionModel,
-    UserListeningSessionModel
+    UserListeningSessionModel,
+    UserDictationSessionModel
 )
 
 from models.WritingModel import WritingPromptModel, WritingSubmissionModel

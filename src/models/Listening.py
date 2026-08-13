@@ -1,7 +1,7 @@
 from datetime import datetime, UTC
-from typing import Dict, List, Optional
-from beanie import Document, Link
-from pydantic import Field
+from typing import Dict, List, Optional, Union
+from beanie import Document, Link, PydanticObjectId
+from pydantic import Field, BaseModel
 
 
 # ==========================================
@@ -82,6 +82,21 @@ class ListeningCompletionModel(Document):
         name = "listening_completions"
 
 
+class UserAnswer(BaseModel):
+    question_id: PydanticObjectId
+    question_type: str
+    answer: Union[str, Dict[str, str]]
+    is_correct: bool
+
+
+class ListeningResult(BaseModel):
+    score: float
+    accuracy_rate: float
+    xp_earned: int
+    competency_matrix: Dict[str, float]
+    detailed_question_review: List[Dict] = Field(default_factory=list)
+
+
 # ==========================================
 # 3. BẢNG LƯU BÀI LÀM & BÁO CÁO REVIEW CỦA USER (Full Analytics)
 # ==========================================
@@ -110,8 +125,8 @@ class UserListeningSessionModel(Document):
     missed_contractions: int = Field(default=0)               # VD: 2
 
     # Dữ liệu nháp cho cả comprehension và dictation
-    user_answers: Dict[str, str] = Field(default_factory=dict)
-    user_typed_text: str = Field(default="")
+    user_answers: Union[List[UserAnswer], Dict[str, str]] = Field(default_factory=list)
+    user_typed_text: Optional[str] = Field(default="")
     time_remaining_seconds: int = Field(default=0)
     score: float = Field(default=0.0)
     # Mảng so sánh từ gõ đúng/sai để tô màu Xanh/Đỏ trên UI:
@@ -122,6 +137,8 @@ class UserListeningSessionModel(Document):
     listening_insight: Optional[str] = None                   # Nhận xét AI
 
     status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
+    result: Optional[ListeningResult] = None
+    submitted_at: Optional[datetime] = None
     start_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -130,3 +147,33 @@ class UserListeningSessionModel(Document):
         indexes = [
             [("user_id", 1), ("passage_id", 1)]
         ]
+
+
+class DictationSentenceHistory(BaseModel):
+    transcript_index: int
+    user_typed_text: str
+    is_correct: bool
+    accuracy_rate: float
+    correct_words: int
+    missed_contractions: int
+    transcript_comparison: List[Dict] = Field(default_factory=list)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class UserDictationSessionModel(Document):
+    user_id: str = Field(..., min_length=1)
+    passage_id: Link[ListeningPassageModel]
+    status: str = Field(default="IN_PROGRESS")                # "IN_PROGRESS" -> "COMPLETED"
+    sentence_histories: Dict[str, DictationSentenceHistory] = Field(default_factory=dict)
+    total_accuracy_rate: float = Field(default=0.0)
+    total_words_typed: int = Field(default=0)
+    submitted_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "user_dictation_sessions"
+        indexes = [
+            [("user_id", 1), ("passage_id", 1)]
+        ]
+

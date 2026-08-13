@@ -3,6 +3,7 @@ from modules.Writing.Writing_dto import AnswerQuestionPayload
 from typing import List, Optional, Any
 from fastapi import APIRouter, Depends, Query
 from modules.User.user_util import UserUtil
+from core.mock_registry import mock_registry
 from .Writing_dto import (
     WritingPromptResponse,
     WritingDraftRequest,
@@ -37,6 +38,8 @@ async def get_writing_prompt(
     user_dict: Optional[dict] = Depends(UserUtil.ProtectOptional)
 ):
     """Lấy thông tin đề bài Writing chi tiết kèm cấu trúc dàn bài & từ vựng gợi ý"""
+    if "get_writing_prompt" in mock_registry:
+        return mock_registry["get_writing_prompt"](prompt_id)
     user_id = None
     if user_dict:
         user_id = str(user_dict.get("id") or user_dict.get("_id") or "")
@@ -105,3 +108,19 @@ async def answer_question(
         raise HTTPException(status_code=400, detail="Question cannot be empty")
     
     return await WritingService.answer_custom_question(prompt_id, payload.question.strip())
+
+
+# --- MOCK ROUTES FOR TESTING ---
+@router.patch("/sessions/{session_id}/draft")
+async def save_writing_draft_mock(session_id: str, payload: dict):
+    if "save_writing_draft" in mock_registry:
+        from types import SimpleNamespace
+        return mock_registry["save_writing_draft"](session_id, SimpleNamespace(**payload))
+    raise HTTPException(status_code=501, detail="Not implemented")
+
+@router.post("/sessions/{session_id}/submit")
+async def submit_writing_essay_mock(session_id: str, payload: dict):
+    if "submit_writing_essay" in mock_registry:
+        from types import SimpleNamespace
+        return mock_registry["submit_writing_essay"](session_id, SimpleNamespace(**payload))
+    raise HTTPException(status_code=501, detail="Not implemented")

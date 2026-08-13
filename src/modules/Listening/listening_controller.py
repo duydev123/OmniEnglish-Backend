@@ -1,6 +1,6 @@
 # modules/Listening/listening_controller.py
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, List, Dict, Any
 from .listening_service import ListeningService
 from .listening_dto import (
@@ -11,6 +11,7 @@ from .listening_dto import (
     ListeningPassageListResponse,
     ListeningPassageDetailResponse
 )
+from modules.User.user_util import UserUtil
 
 router = APIRouter()
 listening_service = ListeningService()
@@ -53,14 +54,14 @@ async def get_listening_passage_detail(passage_id: str):
 
 
 @router.get(path="/passages/{passage_id}/start", response_model=ListeningSessionStartResponse)
-async def start_listening_session(passage_id: str, session_type: str = "COMPREHENSION"):
+async def start_listening_session(passage_id: str, session_type: str = "COMPREHENSION", current_user: dict = Depends(UserUtil.Protect)):
     """Lấy file audio, transcript song ngữ, từ vựng và danh sách câu hỏi"""
     try:
         # 1. Lấy passage
         passage = await listening_service.get_passage(passage_id)
         
-        # 2. Tạo hoặc lấy session (tạm thời dùng user_id cố định)
-        user_id = "test_user_001"
+        # 2. Tạo hoặc lấy session
+        user_id = str(current_user.get("id") or current_user.get("_id") or "")
         session = await listening_service.get_or_create_session(
             user_id, 
             passage_id, 

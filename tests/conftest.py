@@ -35,6 +35,10 @@ from models.Listening import (
     ListeningCompletionModel,
     UserListeningSessionModel
 )
+from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
+from models.Paragraph import WordModel
+from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -62,21 +66,62 @@ async def init_beanie_db(event_loop):
             ListeningMultipleChoiceModel,
             ListeningCompletionModel,
             UserListeningSessionModel,
+            VocabularyCollectionModel,
+            WordModel,
+            UserWordStatusModel,
+            UserProgressModel,
+            WritingPromptModel,
+            WritingSubmissionModel,
+            SpeakingTopicModel,
+            SpeakingPromptModel,
+            UserSpeakingTestSessionModel,
+            ShadowingSentenceModel,
         ]
     )
     yield db
 
 @pytest.fixture(autouse=True)
 async def clean_database():
+    import inspect
     db = mock_client.get_database("omni_english_db")
-    collections = await db.list_collection_names()
+    collections = await db.list_collection_names()  # type: ignore
     for col in collections:
         if not col.startswith("system."):
-            await db[col].delete_many({})
+            res = db[col].delete_many({})
+            if inspect.isawaitable(res):
+                await res
     yield db
 
 @pytest.fixture
 async def client():
     from httpx import AsyncClient, ASGITransport
+    from fastapi import Request, HTTPException
+    from modules.User.user_util import UserUtil
+
+    async def mock_protect(request: Request):
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            payload = UserUtil.decode_token(token)
+            if not payload:
+                raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn!")
+            return payload
+        return {"_id": "60c72b2f9b1d8e1d88ef5567", "email": "mock@example.com"}
+
+    async def mock_protect_optional(request: Request):
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            payload = UserUtil.decode_token(token)
+            if not payload:
+                raise HTTPException(status_code=401, detail="Token không hợp lệ hoặc đã hết hạn!")
+            return payload
+        return {"_id": "60c72b2f9b1d8e1d88ef5567", "email": "mock@example.com"}
+
+    app.dependency_overrides[UserUtil.Protect] = mock_protect
+    app.dependency_overrides[UserUtil.ProtectOptional] = mock_protect_optional
+
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+    app.dependency_overrides.clear()

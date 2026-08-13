@@ -596,13 +596,14 @@ class ListeningService:
         items = []
         for s in sessions:
             passage = await s.passage_id.fetch()
+            has_passage = passage and hasattr(passage, "id")
             accuracy_rate = s.accuracy_rate
             items.append({
                 "session_id": str(s.id),
-                "passage_id": str(passage.id) if passage else "",
-                "passage_title": passage.title if passage else "Unknown Passage",
+                "passage_id": str(passage.id) if has_passage else "",
+                "passage_title": passage.title if has_passage and hasattr(passage, "title") else "Unknown Passage",
                 "score": int(s.score),
-                "total_questions": passage.total_questions if passage else s.completed_questions,
+                "total_questions": passage.total_questions if has_passage and hasattr(passage, "total_questions") else s.completed_questions,
                 "accuracy_rate": round(accuracy_rate, 2),
                 "status": s.status,
                 "session_type": s.session_type,

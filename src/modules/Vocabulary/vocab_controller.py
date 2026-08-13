@@ -217,6 +217,8 @@ async def get_vocabulary_collection(
     current_user: Optional[dict] = Depends(UserUtil.ProtectOptional)
 ):
     """Get vocabulary collection details including word list with IPA, meaning, image, and examples"""
+    if "get_vocabulary_collection" in mock_registry:
+        return mock_registry["get_vocabulary_collection"](collection_id)
     try:
         user_id = extract_user_id(current_user) if current_user else None
         return await VocabService.get_vocabulary_collection(collection_id, user_id=user_id)
@@ -233,6 +235,8 @@ async def update_word_status(
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """Update individual word status during Flashcard study (LEARNING, MASTERED, NEEDS_REVIEW)"""
+    if "update_word_status" in mock_registry:
+        return mock_registry["update_word_status"](payload)
     try:
         user_id = extract_user_id(current_user)
         return await VocabService.update_word_status(payload, user_id=user_id)
@@ -249,6 +253,8 @@ async def update_collection_progress(
     current_user: dict = Depends(UserUtil.Protect)
 ):
     """Update completion percentage and study time for the entire collection"""
+    if "update_collection_progress" in mock_registry:
+        return mock_registry["update_collection_progress"](payload)
     try:
         user_id = extract_user_id(current_user)
         return await VocabService.update_collection_progress(payload, user_id=user_id)

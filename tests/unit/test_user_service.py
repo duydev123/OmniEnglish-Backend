@@ -1,6 +1,6 @@
 import pytest
 from fastapi import HTTPException
-from models.UserModel import UserModel, UserStatsModel
+from models.UserModel import UserModel
 from modules.User.user_service import UserService
 from modules.User.user_dto import LoginRequest, RegisterRequest
 from modules.User.user_util import UserUtil
@@ -24,8 +24,7 @@ async def test_register_and_login_happy_path():
     assert user.username == "testuser"
     assert UserUtil.VerifyPassword("securepassword", user.hashed_password)
 
-    stats = await UserStatsModel.find_one(UserStatsModel.user_id == str(user.id))
-    assert stats is not None
+    assert user.stats is not None
 
     # 2. Login
     login_dto = LoginRequest(
@@ -93,7 +92,7 @@ async def test_get_profile_happy_path():
         password="password123"
     )
     reg_response = await UserService.register(register_dto)
-    user_id = reg_response.user_id
+    user_id = reg_response.id
 
     profile = await UserService.get_profile({"_id": user_id})
     assert profile.username == "profileuser"
