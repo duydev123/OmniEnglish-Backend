@@ -66,5 +66,19 @@ class DailyActivityLogModel(Document):
     
     class Settings:
         name = "daily_activity_logs"
-   
         indexes = [[("user_id", 1), ("date_str", 1)]]
+
+
+class PasswordResetOTPModel(Document):
+    email: EmailStr
+    otp_code: str
+    expires_at: datetime
+    is_used: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    class Settings:
+        name = "password_reset_otps"
+        indexes = [
+            [("email", 1)],
+            [("expires_at", 1)],
+        ]
