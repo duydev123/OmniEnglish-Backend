@@ -73,6 +73,10 @@ dependencies = [
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning"
+]
 
 [tool.coverage.run]
 source = ["src"]

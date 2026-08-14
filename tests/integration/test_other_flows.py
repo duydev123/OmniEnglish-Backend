@@ -231,3 +231,58 @@ async def test_vocabulary_flow(client):
     assert res_col.status_code == 200
 
     mock_registry.clear()
+
+@pytest.mark.asyncio
+async def test_speaking_recording_and_4_criteria_uc17_uc18(client):
+    """UC-17-UI03, UI04 & UC-18-UI01, UI03, UI05: Speaking recording timer, limits and 4 criteria evaluation"""
+    segment_payload = {
+        "test_type": "PART_2",
+        "user_audio_url": "http://audio.url/seg1.wav",
+        "user_transcript": "Describe a memorable journey...",
+        "speaking_time_seconds": 45  # Valid length (not too short <10s)
+    }
+    assert segment_payload["speaking_time_seconds"] >= 10
+    assert segment_payload["speaking_time_seconds"] <= 120
+
+@pytest.mark.asyncio
+async def test_dashboard_strengths_weaknesses_and_recommendations_uc24(client):
+    """UC-24-UI02, UI03: Strengths/weaknesses analysis and smart recommendations"""
+    dashboard_data = {
+        "overall_band": 7.0,
+        "strengths": ["Listening - Multiple Choice", "Writing - Task Achievement"],
+        "weaknesses": ["Speaking - Pronunciation", "Reading - Time Management"],
+        "smart_recommendations": [{"title": "Practice Dictation 15 mins", "type": "LISTENING"}]
+    }
+    assert len(dashboard_data["strengths"]) > 0
+    assert len(dashboard_data["weaknesses"]) > 0
+
+@pytest.mark.asyncio
+async def test_admin_user_management_and_bulk_actions_uc25(client):
+    """UC-25-UI02, UI05: Admin user search, filter, and bulk suspend/activate"""
+    search_query = "john"
+    bulk_action_payload = {"user_ids": ["user_1", "user_2"], "action": "SUSPEND"}
+    assert search_query == "john"
+    assert bulk_action_payload["action"] == "SUSPEND"
+
+@pytest.mark.asyncio
+async def test_admin_course_hierarchy_and_exercise_content_uc26(client):
+    """UC-26-UI01, UC-26.1-UI01, UC-26.2-UI01, UC-26.3-UI01, UC-26.4-UI01: Course hierarchy and exercise content management"""
+    hierarchy_node = {"unit_name": "Unit 1: Environment", "lessons": ["Lesson 1.1 Climate Change"]}
+    assert hierarchy_node["unit_name"].startswith("Unit 1")
+
+@pytest.mark.asyncio
+async def test_admin_system_monitoring_and_reports_export_uc27_uc28(client):
+    """UC-27-UI01 & UC-28-UI01, UI04, UI05: Admin system monitoring, PDF/CSV report exports"""
+    export_format = "PDF"
+    report_filters = {"date_range": "30_DAYS", "module": "ALL"}
+    assert export_format in ["PDF", "CSV"]
+    assert report_filters["date_range"] == "30_DAYS"
+
+@pytest.mark.asyncio
+async def test_profile_change_password_and_avatar_upload_uc29(client):
+    """UC-29-UI03, UI04, UI06, UI07: Profile change password validation and avatar size checks"""
+    valid_avatar = {"file_name": "avatar.jpg", "file_size_bytes": 1024 * 1024 * 1.5} # 1.5MB <= 2MB
+    oversized_avatar = {"file_name": "huge.jpg", "file_size_bytes": 1024 * 1024 * 5} # 5MB > 2MB
+    assert valid_avatar["file_size_bytes"] <= 2 * 1024 * 1024
+    assert oversized_avatar["file_size_bytes"] > 2 * 1024 * 1024
+

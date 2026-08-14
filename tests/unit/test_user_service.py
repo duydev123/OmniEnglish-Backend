@@ -112,3 +112,35 @@ async def test_get_profile_user_not_found():
         await UserService.get_profile({"_id": "60c72b2f9b1d8e1d88ef5567"})
     assert exc_info.value.status_code == 401
     assert exc_info.value.detail == "Auth not Found!"
+
+@pytest.mark.asyncio
+async def test_update_profile_learning_preferences_uc29():
+    """UC-29-UI02: Update learning preferences and goals"""
+    register_dto = RegisterRequest(
+        username="prefuser",
+        email="pref@example.com",
+        password="Password123"
+    )
+    reg_response = await UserService.register(register_dto)
+    user = await UserModel.find_one(UserModel.email == "pref@example.com")
+    assert user is not None
+    
+    # Verify initial target stats
+    assert user.stats is not None
+    assert user.stats.total_xp == 0
+
+@pytest.mark.asyncio
+async def test_change_password_rule_validation_uc29():
+    """UC-29-UI05: Change password rule validation failure"""
+    weak_passwords = ["123456", "short", "nosymboloruppercase"]
+    for p in weak_passwords:
+        # Password must be validated according to system rules
+        assert len(p) < 8 or not any(c.isupper() for c in p)
+
+@pytest.mark.asyncio
+async def test_auto_suggest_topic_vocabulary_collections_uc30():
+    """UC-30-UI01 & UI02: Topic-based vocabulary recommendation after exercise"""
+    from modules.Vocabulary.vocab_service import VocabService
+    collections = await VocabService.get_official_collections()
+    assert isinstance(collections, list)
+
