@@ -18,7 +18,9 @@ from .speaking_dto import (
     SpeakingSegmentSubmitResponse,
     SpeakingSessionDetailResponse,
     SpeakingHistoryItemResponse,
-    QuestionDetailReview
+    QuestionDetailReview,
+    ShadowingFeedbackRequest,     # Thêm dòng này
+    ShadowingFeedbackResponse
 )
 from models.Speaking import ShadowingSentenceModel
 from .speaking_dto import ShadowingSentenceResponse, ShadowingEvaluateResponse
@@ -232,6 +234,11 @@ class SpeakingService:
         await SpeakingUtil.validate_audio_file(audio_file)
         audio_url = await SpeakingUtil.upload_audio_to_cloud(audio_file, folder=f"speaking/{session_id}")
         eval_res = await SpeakingUtil.evaluate_single_audio_segment(audio_url, prompt.question_text)
+        if not eval_res:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Không nhận được kết quả phân tích âm thanh từ hệ thống AI."
+            )
 
         transcript = eval_res.get("transcript", "")
         segment_score = eval_res.get("segment_score", 0.0)
@@ -240,6 +247,7 @@ class SpeakingService:
         lexical_score = eval_res.get("lexical_score", 0.0)
         grammar_score = eval_res.get("grammar_score", 0.0)
         feedback = eval_res.get("feedback", "")
+        sample_response = eval_res.get("sample_response", "")
         words_detail = eval_res.get("words_detail", []) # Lấy dữ liệu âm tiết
 
         question_found = False
@@ -254,6 +262,7 @@ class SpeakingService:
                 item.lexical_score = lexical_score
                 item.grammar_score = grammar_score
                 item.ai_feedback = feedback
+                item.sample_response = sample_response
                 item.words_detail = words_detail # Lưu vào mảng
                 item.is_graded = True
                 question_found = True
@@ -272,6 +281,7 @@ class SpeakingService:
                     lexical_score=lexical_score,
                     grammar_score=grammar_score,
                     ai_feedback=feedback,
+                    sample_response=sample_response,
                     words_detail=words_detail, # Lưu vào mảng
                     is_graded=True
                 )
@@ -322,6 +332,7 @@ class SpeakingService:
             lexical_score=lexical_score,
             grammar_score=grammar_score,
             realtime_feedback=feedback,
+            sample_response=sample_response,
             words_detail=words_detail, # Trả về mảng bóc tách âm tiết
             next_prompt_id=next_prompt_id
         )
@@ -362,7 +373,8 @@ class SpeakingService:
                 QuestionDetailReview(
                     question_text=q.question_text,
                     user_transcript=q.user_transcript,
-                    user_audio_url=q.user_audio_url
+                    user_audio_url=q.user_audio_url,
+                    sample_response=getattr(q, "sample_response", None)
                 ) for q in session.questions_detail
             ] if session.questions_detail else [],
             
@@ -509,3 +521,28 @@ class SpeakingService:
             user_transcript=eval_res["transcript"],
             words_detail=eval_res["words_detail"]
         )
+    
+    
+    @staticmethod
+    async def generate_shadowing_feedback(sentence_id: str, payload: ShadowingFeedbackRequest) -> ShadowingFeedbackResponse:
+        from beanie import PydanticObjectId
+        from fastapi import HTTPException
+        from .speaking_util import SpeakingUtil
+        from models.Speaking import ShadowingSentenceModel
+        from .speaking_dto import ShadowingFeedbackResponse
+
+        if not PydanticObjectId.is_valid(sentence_id):
+            raise HTTPException(status_code=400, detail="ID câu không hợp lệ")
+
+        sentence = await ShadowingSentenceModel.get(PydanticObjectId(sentence_id))
+        if not sentence:
+            raise HTTPException(status_code=404, detail="Không tìm thấy câu Shadowing này")
+
+        # Gọi qua Util để kết nối với Gemini
+        feedback_text = await SpeakingUtil.get_gemini_shadowing_feedback(
+            english_text=sentence.english_text,
+            user_transcript=payload.user_transcript,
+            words_detail=payload.words_detail
+        )
+
+        return ShadowingFeedbackResponse(feedback=feedback_text)

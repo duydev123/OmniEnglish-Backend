@@ -61,6 +61,7 @@ class SpeakingSegmentSubmitResponse(BaseModel):
     lexical_score: Optional[float] = None          # THÊM MỚI
     grammar_score: Optional[float] = None          # THÊM MỚI  
     realtime_feedback: Optional[str] = None
+    sample_response: Optional[str] = None          # THÊM MỚI - Câu trả lời gợi ý mẫu
     words_detail: List[WordDetail] = Field(default_factory=list)
     next_prompt_id: Optional[str] = None
 
@@ -85,6 +86,7 @@ class QuestionDetailReview(BaseModel):
     question_text: str                             
     user_transcript: str                           # Bóc băng + highlight
     user_audio_url: Optional[str] = None           # Audio đoạn ghi âm này
+    sample_response: Optional[str] = None          # Gợi ý câu hoàn chỉnh mẫu
 
 class Milestone(BaseModel):
     title: str
@@ -159,3 +161,11 @@ class ShadowingEvaluateResponse(BaseModel):
     fluency_score: float
     user_transcript: str
     words_detail: List[WordDetail] = Field(default_factory=list)
+    
+    
+class ShadowingFeedbackRequest(BaseModel):
+    user_transcript: str
+    words_detail: List[Dict] = Field(default_factory=list)
+
+class ShadowingFeedbackResponse(BaseModel):
+    feedback: str

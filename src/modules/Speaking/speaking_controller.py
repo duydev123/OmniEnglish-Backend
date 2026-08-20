@@ -193,3 +193,17 @@ async def complete_speaking_test_mock(session_id: str):
     if "complete_speaking_test" in mock_registry:
         return mock_registry["complete_speaking_test"](session_id)
     raise HTTPException(status_code=501, detail="Not implemented")
+
+from .speaking_dto import ShadowingFeedbackRequest, ShadowingFeedbackResponse
+
+# Thêm route mới vào dưới cùng của phần "6. SHADOWING API"
+@router.post("/shadowing/sentences/{sentence_id}/feedback", response_model=ShadowingFeedbackResponse)
+async def get_shadowing_feedback(
+    sentence_id: str,
+    payload: ShadowingFeedbackRequest,
+    current_user: dict = Depends(UserUtil.Protect)
+):
+    """
+    Gửi kết quả đánh giá (chữ đọc sai, transcript) lên để Gemini AI hướng dẫn cách cải thiện phát âm.
+    """
+    return await SpeakingService.generate_shadowing_feedback(sentence_id, payload)

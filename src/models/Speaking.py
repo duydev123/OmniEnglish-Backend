@@ -42,6 +42,7 @@ class QuestionDetailItem(BaseModel):
     lexical_score: Optional[float] = 0.0  # THÊM MỚI
     grammar_score: Optional[float] = 0.0  # THÊM MỚI
     ai_feedback: Optional[str] = None
+    sample_response: Optional[str] = None  # Gợi ý câu trả lời mẫu hoàn chỉnh
     words_detail: List[WordDetail] = Field(default=[])
     
     is_graded: bool = False # Đánh dấu đã chấm xong
