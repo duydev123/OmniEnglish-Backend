@@ -65,6 +65,7 @@ dependencies = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
+    "pytest-mock",
     "mongomock-motor",
     "cachetools>=7.1.7",
 ]
