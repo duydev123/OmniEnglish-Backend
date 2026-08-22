@@ -1,6 +1,10 @@
+import random
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from typing import Optional
-from models.UserModel import UserModel, UserSettings, UserStats
+from beanie import PydanticObjectId
+from models.UserModel import UserModel, UserSettings, UserStats, PasswordResetOTPModel
+from core.email_service import EmailService
 from .user_dto import (
     LoginRequest,
     RegisterRequest,
@@ -11,6 +15,9 @@ from .user_dto import (
     UserStatsResponse,
     ChangePasswordRequest,
     UpdateProfileRequest,
+    SendOTPRequest,
+    VerifyOTPRequest,
+    ResetPasswordRequest,
 )
 from .user_util import UserUtil
 
@@ -18,7 +25,7 @@ from .user_util import UserUtil
 def build_user_profile_response(user: UserModel, token: Optional[str] = None) -> UserProfileResponse:
     settings = user.settings or UserSettings()
     stats = user.stats or UserStats()
-    created_at_str = user.created_at.strftime("%B %Y") if getattr(user, "created_at", None) else "August 2024"
+    created_at_str = user.created_at.strftime("%B %Y") if getattr(user, "created_at", None) else datetime.now(timezone.utc).strftime("%B %Y")
     return UserProfileResponse(
         id=str(user.id),
         username=user.username,
@@ -54,11 +61,24 @@ def build_user_profile_response(user: UserModel, token: Optional[str] = None) ->
     )
 
 
+async def _get_user_by_id(user_id: str) -> Optional[UserModel]:
+    if not user_id:
+        return None
+    try:
+        user = await UserModel.get(PydanticObjectId(user_id))
+        if user:
+            return user
+    except Exception:
+        pass
+    try:
+        return await UserModel.get(user_id)
+    except Exception:
+        return None
+
+
 class UserService:
     @staticmethod
-    async def login(data: LoginRequest) -> TokenResponse:
-
-        # 1. Tìm user theo email
+    async def login(data: LoginRequest) -> UserProfileResponse:
         user = await UserModel.find_one(UserModel.email == data.email)
         if not user:
             raise HTTPException(
@@ -66,27 +86,23 @@ class UserService:
                 detail="Email not found!"
             )
 
-        # 2. Kiểm tra mật khẩu
-        if not user.hashed_password or not UserUtil.VerifyPassword(data.password, user.hashed_password):
+        if not user.hashed_password:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Password Incorrect!"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tài khoản này được đăng ký qua Google/Facebook. Vui lòng chọn Đăng nhập bằng Google hoặc dùng tính năng Quên mật khẩu để tạo mật khẩu!"
             )
 
-        # 3. Tạo Token và trả về UserProfileResponse chứa token
+        if not UserUtil.VerifyPassword(data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Mật khẩu không chính xác!"
+            )
+
         token = UserUtil.CreateToken(user)
         return build_user_profile_response(user, token=token)
 
-        return TokenResponse(
-            access_token=token,
-            token_type="bearer",
-            user_id=str(user.id),
-            username=user.username,
-            role=user.role or "user"
-        )
     @staticmethod
-    async def register(data: RegisterRequest) -> TokenResponse:
-        # 1. Kiểm tra tài khoản đã tồn tại chưa
+    async def register(data: RegisterRequest) -> UserProfileResponse:
         existing_user = await UserModel.find_one(UserModel.email == data.email)
         if existing_user:
             raise HTTPException(
@@ -94,10 +110,7 @@ class UserService:
                 detail="Account exist!"
             )
 
-        # 2. Hash mật khẩu
         hash_pass = UserUtil.HashPassword(data.password)
-
-        # 3. Tạo UserModel mới trong Database (embedded settings & stats)
         new_user = UserModel(
             username=data.username,
             email=data.email,
@@ -110,17 +123,8 @@ class UserService:
         )
         await new_user.insert()
 
-        # 4. Tạo token và trả về UserProfileResponse chứa token
         token = UserUtil.CreateToken(new_user)
         return build_user_profile_response(new_user, token=token)
-
-        return TokenResponse(
-            access_token=token,
-            token_type="bearer",
-            user_id=str(new_user.id),
-            username=new_user.username,
-            role=new_user.role
-        )
 
     @staticmethod
     async def get_profile(current_user: dict) -> UserProfileResponse:
@@ -131,7 +135,7 @@ class UserService:
                 detail="Invalid Token Payload!"
             )
 
-        user = await UserModel.get(user_id)
+        user = await _get_user_by_id(user_id)
         if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -140,12 +144,11 @@ class UserService:
 
         return build_user_profile_response(user)
 
-    async def social_login(self, data: SocialLoginRequest) -> UserProfileResponse:
-        # Tìm user theo email
+    @staticmethod
+    async def social_login(data: SocialLoginRequest) -> UserProfileResponse:
         user = await UserModel.find_one(UserModel.email == data.email)
         
         if not user:
-            # Tạo user mới nếu chưa tồn tại
             username_val = data.name or data.email.split("@")[0]
             user = UserModel(
                 username=username_val,
@@ -158,7 +161,6 @@ class UserService:
             )
             await user.insert()
         else:
-            # Cập nhật avatar nếu có
             if data.avatar and not user.avatar:
                 user.avatar = data.avatar
                 await user.save()
@@ -166,7 +168,157 @@ class UserService:
         token = UserUtil.CreateToken(user)
         return build_user_profile_response(user, token=token)
 
-    # --- Alias giữ tương thích với tên hàm cũ ---
+    @staticmethod
+    async def update_profile(current_user: dict, dto: UpdateProfileRequest) -> UserProfileResponse:
+        user_id = current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Token Payload!")
+
+        user = await _get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found!")
+
+        if dto.avatar is not None:
+            user.avatar = dto.avatar
+        if dto.username is not None and len(dto.username.strip()) >= 3:
+            user.username = dto.username.strip()
+        if dto.proficiency_level is not None:
+            user.proficiency_level = dto.proficiency_level
+
+        if user.settings is None:
+            user.settings = UserSettings()
+
+        if dto.settings:
+            if dto.settings.focus_areas is not None:
+                user.settings.focus_areas = dto.settings.focus_areas
+            if dto.settings.daily_word_target is not None:
+                user.settings.daily_word_target = dto.settings.daily_word_target
+            if dto.settings.learning_mode is not None:
+                user.settings.learning_mode = dto.settings.learning_mode
+            if dto.settings.weekend_mastery is not None:
+                user.settings.weekend_mastery = dto.settings.weekend_mastery
+            if dto.settings.base_language is not None:
+                user.settings.base_language = dto.settings.base_language
+            if dto.settings.notifications_enabled is not None:
+                user.settings.notifications_enabled = dto.settings.notifications_enabled
+
+        if dto.daily_word_target is not None:
+            user.settings.daily_word_target = dto.daily_word_target
+        if dto.learning_mode is not None:
+            user.settings.learning_mode = dto.learning_mode
+        if dto.weekend_mastery is not None:
+            user.settings.weekend_mastery = dto.weekend_mastery
+        if dto.base_language is not None:
+            user.settings.base_language = dto.base_language
+        if dto.notifications_enabled is not None:
+            user.settings.notifications_enabled = dto.notifications_enabled
+
+        await user.save()
+        return build_user_profile_response(user)
+
+    @staticmethod
+    async def change_password(current_user: dict, dto: ChangePasswordRequest):
+        user_id = current_user.get("_id")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Token Payload!")
+
+        user = await _get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found!")
+
+        if not user.hashed_password or not UserUtil.VerifyPassword(dto.old_password, user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mật khẩu cũ không chính xác!")
+
+        user.hashed_password = UserUtil.HashPassword(dto.new_password)
+        await user.save()
+        return {"status": "success", "message": "Đổi mật khẩu thành công!"}
+
+    @staticmethod
+    async def send_forgot_otp(data: SendOTPRequest):
+        user = await UserModel.find_one(UserModel.email == data.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Email không tồn tại trong hệ thống!"
+            )
+
+        otp_code = str(random.randint(100000, 999999))
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+
+        otp_doc = PasswordResetOTPModel(
+            email=data.email,
+            otp_code=otp_code,
+            expires_at=expires_at,
+            is_used=False
+        )
+        await otp_doc.insert()
+
+        EmailService.send_otp_email(to_email=data.email, otp_code=otp_code, username=user.username)
+        return {
+            "status": "success",
+            "message": "Mã xác nhận OTP đã được gửi tới email của bạn. Vui lòng kiểm tra hộp thư!"
+        }
+
+    @staticmethod
+    async def verify_forgot_otp(data: VerifyOTPRequest):
+        otp_doc = await PasswordResetOTPModel.find_one(
+            PasswordResetOTPModel.email == data.email,
+            PasswordResetOTPModel.otp_code == data.otp_code,
+            PasswordResetOTPModel.is_used == False
+        )
+        if not otp_doc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP không chính xác!"
+            )
+
+        now = datetime.now(timezone.utc)
+        exp = otp_doc.expires_at.replace(tzinfo=timezone.utc) if otp_doc.expires_at.tzinfo is None else otp_doc.expires_at
+        if now > exp:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP đã hết hạn! Vui lòng yêu cầu mã mới."
+            )
+
+        return {"status": "success", "message": "Mã OTP hợp lệ!"}
+
+    @staticmethod
+    async def reset_password_with_otp(data: ResetPasswordRequest):
+        otp_doc = await PasswordResetOTPModel.find_one(
+            PasswordResetOTPModel.email == data.email,
+            PasswordResetOTPModel.otp_code == data.otp_code,
+            PasswordResetOTPModel.is_used == False
+        )
+        if not otp_doc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP không hợp lệ hoặc đã được sử dụng!"
+            )
+
+        now = datetime.now(timezone.utc)
+        exp = otp_doc.expires_at.replace(tzinfo=timezone.utc) if otp_doc.expires_at.tzinfo is None else otp_doc.expires_at
+        if now > exp:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mã OTP đã hết hạn! Vui lòng yêu cầu mã mới."
+            )
+
+        user = await UserModel.find_one(UserModel.email == data.email)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tài khoản không tồn tại!"
+            )
+
+        user.hashed_password = UserUtil.HashPassword(data.new_password)
+        await user.save()
+
+        otp_doc.is_used = True
+        await otp_doc.save()
+
+        return {"status": "success", "message": "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay."}
+
+    # --- Aliases ---
     SignIn = login
     signup = register
     authCheck = get_profile

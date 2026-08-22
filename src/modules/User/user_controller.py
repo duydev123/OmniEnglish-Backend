@@ -7,6 +7,9 @@ from .user_dto import (
     UserProfileResponse,
     ChangePasswordRequest,
     UpdateProfileRequest,
+    SendOTPRequest,
+    VerifyOTPRequest,
+    ResetPasswordRequest,
 )
 from .user_util import UserUtil
 
@@ -50,3 +53,15 @@ async def update_profile(
     current_user: dict = Depends(UserUtil.Protect)
 ):
     return await user_service.update_profile(current_user, dto)
+
+@router.post("/forgot-password/send-otp", status_code=status.HTTP_200_OK)
+async def send_forgot_otp(dto: SendOTPRequest):
+    return await user_service.send_forgot_otp(dto)
+
+@router.post("/forgot-password/verify-otp", status_code=status.HTTP_200_OK)
+async def verify_forgot_otp(dto: VerifyOTPRequest):
+    return await user_service.verify_forgot_otp(dto)
+
+@router.post("/forgot-password/reset-password", status_code=status.HTTP_200_OK)
+async def reset_password_with_otp(dto: ResetPasswordRequest):
+    return await user_service.reset_password_with_otp(dto)

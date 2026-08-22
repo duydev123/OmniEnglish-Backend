@@ -72,5 +72,33 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=6)
 
+class UserSettingsUpdate(BaseModel):
+    focus_areas: Optional[List[str]] = None
+    daily_word_target: Optional[int] = None
+    learning_mode: Optional[str] = None
+    weekend_mastery: Optional[bool] = None
+    base_language: Optional[str] = None
+    notifications_enabled: Optional[bool] = None
+
 class UpdateProfileRequest(BaseModel):
     avatar: Optional[str] = None
+    username: Optional[str] = None
+    proficiency_level: Optional[str] = None
+    settings: Optional[UserSettingsUpdate] = None
+    daily_word_target: Optional[int] = None
+    learning_mode: Optional[str] = None
+    weekend_mastery: Optional[bool] = None
+    base_language: Optional[str] = None
+    notifications_enabled: Optional[bool] = None
+
+class SendOTPRequest(BaseModel):
+    email: EmailStr
+
+class VerifyOTPRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp_code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=6)
