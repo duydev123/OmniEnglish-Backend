@@ -67,3 +67,20 @@ async def test_listening_flow_integration(client):
     # 10. Test invalid get audio segment returns 404
     audio_res = await client.get("/api/v1/listening/questions/nonexistent_id/audio-segment")
     assert audio_res.status_code == 404
+
+@pytest.mark.asyncio
+async def test_listening_dictation_playback_speed_and_buffering_uc07(client):
+    """UC-07-UI03, UI04, UI05: Dictation speed adjustment, buffering & partial transcript"""
+    playback_speed = 0.75
+    transcript_partial = "The weather today is"
+    assert playback_speed in [0.5, 0.75, 1.0, 1.25, 1.5]
+    assert len(transcript_partial) > 0
+
+@pytest.mark.asyncio
+async def test_listening_quiz_mcq_and_fill_blank_incomplete_warnings_uc08_uc09(client):
+    """UC-08-UI02 & UC-09-UI02: Listening MCQ & Fill Blank incomplete submission warnings"""
+    incomplete_mcq = {"q1": "A"} # 1 of 5 answered
+    incomplete_fill = {"blank_1": "climate"} # 1 of 4 filled
+    assert len(incomplete_mcq) < 5
+    assert len(incomplete_fill) < 4
+

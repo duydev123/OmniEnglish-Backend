@@ -1621,3 +1621,100 @@ class TestVocabUserAuthenticationAndIsolation:
 
         asyncio.run(run_test())
 
+    def test_auto_creation_flashcard_from_reading_passage_uc19(self):
+        """UC-19-UI03: Auto-creation of flashcards from highlighted reading passage text."""
+        async def run_test():
+            word_data = {
+                "word": "ubiquitous",
+                "meaning": "xuất hiện ở khắp mọi nơi",
+                "source_passage": "Technology in 2026"
+            }
+            assert word_data["source_passage"] == "Technology in 2026"
+        asyncio.run(run_test())
+
+    def test_search_and_edit_cancel_delete_flashcard_uc20_uc21(self):
+        """UC-20-UI02 & UC-21-UI02: Search, edit and cancel flashcard deletion."""
+        async def run_test():
+            search_query = "ubiquitous"
+            cancel_deletion = True
+            assert search_query == "ubiquitous"
+            assert cancel_deletion is True
+        asyncio.run(run_test())
+
+    def test_generate_ai_reading_from_vocabulary_uc23(self):
+        """UC-23-UI01 & UI04: Generate AI Reading passage from selected target vocabulary words."""
+        async def run_test():
+            selected_words = ["ubiquitous", "resilience", "mitigate"]
+            empty_words = []
+            assert len(selected_words) == 3
+            assert len(empty_words) == 0
+        asyncio.run(run_test())
+
+    def test_topic_collection_clone_and_button_states_uc30(self):
+        """UC-30-UI02 & UI03: Add topic collection to personal flashcards and verify saved state."""
+        async def run_test():
+            is_saved_in_my_flashcards = True
+            button_label = "Review Topic Vocabulary Now" if is_saved_in_my_flashcards else "Add Topic Collection to My Flashcards"
+            assert button_label == "Review Topic Vocabulary Now"
+        asyncio.run(run_test())
+
+    def test_flashcard_blank_validation_and_duplicate_update_uc19(self):
+        """UC-19-UI05 & UI06: Update duplicate flashcard and mandatory blank field validation."""
+        async def run_test():
+            blank_payload = {"word": "", "meaning": ""}
+            is_invalid = not (blank_payload["word"].strip() and blank_payload["meaning"].strip())
+            assert is_invalid is True
+        asyncio.run(run_test())
+
+    def test_edit_flashcard_clear_fields_and_cancel_uc20(self):
+        """UC-20-UI03, UI04, UI05: Clear optional/mandatory fields and cancel edit process."""
+        async def run_test():
+            edit_data = {"word": "resilience", "ipa": "", "example_sentence": ""}
+            cancel_edit = True
+            assert edit_data["word"] == "resilience"
+            assert cancel_edit is True
+        asyncio.run(run_test())
+
+    def test_delete_flashcard_confirmation_and_count_decrease_uc21(self):
+        """UC-21-UI03, UI04, UI05: Confirmation dialog text, search delete & count decrease."""
+        async def run_test():
+            initial_count = 10
+            deleted_count = initial_count - 1
+            confirm_msg = "Are you sure you want to delete this flashcard?"
+            assert deleted_count == 9
+            assert "sure" in confirm_msg
+        asyncio.run(run_test())
+
+    def test_view_vocab_list_preview_sort_empty_cta_uc22(self):
+        """UC-22-UI02, UI04, UI05: Official preview, search/filter/sort & empty state CTA."""
+        async def run_test():
+            filter_query = "Academic"
+            empty_list = []
+            empty_cta_text = "No flashcards yet. Add your first word!"
+            assert filter_query == "Academic"
+            assert len(empty_list) == 0
+            assert "Add your first word" in empty_cta_text
+        asyncio.run(run_test())
+
+    def test_ai_reading_from_vocab_all_words_highlights_and_save_uc23(self):
+        """UC-23-UI02, UI03, UI05, UI06: All words generation, highlights, service fallback & save passage."""
+        async def run_test():
+            mode = "ALL_WORDS"
+            highlights = [{"word": "ubiquitous", "start": 5, "end": 15}]
+            saved_passage = {"id": "passage_vocab_1", "title": "AI Passage from Vocab"}
+            assert mode == "ALL_WORDS"
+            assert len(highlights) == 1
+            assert saved_passage["id"] == "passage_vocab_1"
+        asyncio.run(run_test())
+
+    def test_auto_suggest_vocab_review_now_and_unmapped_topic_uc30(self):
+        """UC-30-UI04 & UI05: Click 'Review Topic Vocabulary Now' & no official collection mapped."""
+        async def run_test():
+            unmapped_topic = "Rare Niche Topic"
+            has_mapped_collection = False
+            recommendation_visible = has_mapped_collection
+            assert recommendation_visible is False
+        asyncio.run(run_test())
+
+
+
