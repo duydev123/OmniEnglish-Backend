@@ -25,7 +25,7 @@ from .user_util import UserUtil
 def build_user_profile_response(user: UserModel, token: Optional[str] = None) -> UserProfileResponse:
     settings = user.settings or UserSettings()
     stats = user.stats or UserStats()
-    created_at_str = user.created_at.strftime("%B %Y") if getattr(user, "created_at", None) else "August 2024"
+    created_at_str = user.created_at.strftime("%B %Y") if getattr(user, "created_at", None) else datetime.now(timezone.utc).strftime("%B %Y")
     return UserProfileResponse(
         id=str(user.id),
         username=user.username,
