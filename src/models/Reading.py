@@ -22,6 +22,9 @@ class ReadingPassageModel(Document):
 
     class Settings:
         name = "reading_passages"
+        indexes = [
+            [("created_at", -1)]
+        ]
 
 
 # ==========================================
@@ -40,6 +43,9 @@ class ReadingMultipleChoiceModel(Document):
 
     class Settings:
         name = "reading_multiple_choices"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 class ReadingHeadingMatchingModel(Document):
     passage_id: Link[ReadingPassageModel]
     order: int = Field(default=4)
@@ -51,6 +57,9 @@ class ReadingHeadingMatchingModel(Document):
 
     class Settings:
         name = "reading_heading_matchings"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 class ReadingFillBlankModel(Document):
     passage_id: Link[ReadingPassageModel]
     order: int = Field(default=5)
@@ -61,6 +70,9 @@ class ReadingFillBlankModel(Document):
 
     class Settings:
         name = "reading_fill_blanks"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 class ReadingTrueFalseNotGivenModel(Document):
     passage_id: Link[ReadingPassageModel]
     order: int = Field(default=6)
@@ -70,6 +82,9 @@ class ReadingTrueFalseNotGivenModel(Document):
 
     class Settings:
         name = "reading_true_false_not_given"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 # ==========================================
 # 3. BẢNG LƯU LƯỢT LÀM BÀI READING CỦA USER
 # ==========================================

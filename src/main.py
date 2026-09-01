@@ -14,7 +14,7 @@ load_dotenv()
 
 # Import models
 # from models.Paragraph import ParagraphModel, SentenceModel, WordModel
-from models.UserModel import UserModel, PasswordResetOTPModel
+from models.UserModel import UserModel, PasswordResetOTPModel, DailyActivityLogModel
 
 # Import router
 from modules.User import user_controller
@@ -92,6 +92,7 @@ async def lifespan(app: FastAPI):
             WritingPromptModel,
             WritingSubmissionModel,
             PasswordResetOTPModel,
+            DailyActivityLogModel,
             #begin speaking 
             SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
             #end speaking 

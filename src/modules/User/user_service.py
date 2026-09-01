@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from typing import Optional
 from beanie import PydanticObjectId
-from models.UserModel import UserModel, UserSettings, UserStats, PasswordResetOTPModel
+from models.UserModel import UserModel, UserSettings, UserStats, PasswordResetOTPModel, DailyActivityLogModel
 from core.email_service import EmailService
 from .user_dto import (
     LoginRequest,
@@ -317,6 +317,88 @@ class UserService:
         await otp_doc.save()
 
         return {"status": "success", "message": "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay."}
+
+    @staticmethod
+    async def daily_checkin(current_user: dict) -> dict:
+        user_id = current_user.get("_id") or current_user.get("user_id") or current_user.get("id")
+        user = await _get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+        now = datetime.now(timezone.utc)
+        today_str = now.strftime("%Y-%m-%d")
+        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        existing_log = await DailyActivityLogModel.find_one(
+            DailyActivityLogModel.user_id == str(user.id),
+            DailyActivityLogModel.date_str == today_str
+        )
+
+        today_checked_in = True
+        if not existing_log:
+            new_log = DailyActivityLogModel(
+                user_id=str(user.id),
+                date_str=today_str,
+                activities_count=1,
+                xp_earned=10
+            )
+            await new_log.insert()
+
+            # Update Streak: check if user had activity yesterday
+            yesterday_log = await DailyActivityLogModel.find_one(
+                DailyActivityLogModel.user_id == str(user.id),
+                DailyActivityLogModel.date_str == yesterday_str
+            )
+
+            current_streak = user.stats.current_streak_days or 0
+            if yesterday_log:
+                user.stats.current_streak_days = current_streak + 1
+            else:
+                user.stats.current_streak_days = 1
+            
+            user.last_login_at = now
+            await user.save()
+        else:
+            existing_log.activities_count += 1
+            await existing_log.save()
+            user.last_login_at = now
+            await user.save()
+
+        # Fetch active dates
+        logs = await DailyActivityLogModel.find(
+            DailyActivityLogModel.user_id == str(user.id)
+        ).to_list()
+        activity_dates = [l.date_str for l in logs]
+
+        return {
+            "status": "success",
+            "message": "Đã ghi nhận đăng nhập / hoạt động hôm nay thành công!",
+            "today_checked_in": today_checked_in,
+            "streak_days": user.stats.current_streak_days,
+            "activity_dates": activity_dates,
+            "user": build_user_profile_response(user)
+        }
+
+    @staticmethod
+    async def get_activity_logs(current_user: dict) -> dict:
+        user_id = current_user.get("_id") or current_user.get("user_id") or current_user.get("id")
+        if not user_id:
+            return {"data": []}
+
+        logs = await DailyActivityLogModel.find(
+            DailyActivityLogModel.user_id == str(user_id)
+        ).sort("+date_str").to_list()
+
+        results = [
+            {
+                "date_str": l.date_str,
+                "activities_count": l.activities_count,
+                "xp_earned": l.xp_earned
+            }
+            for l in logs
+        ]
+
+        return {"status": "success", "data": results}
 
     # --- Aliases ---
     SignIn = login

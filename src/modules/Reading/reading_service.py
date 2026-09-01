@@ -240,22 +240,15 @@ class ReadingService:
         # Lấy passage
         passage = await session.passage_id.fetch()
         
-        # Lấy tất cả câu hỏi
-        multiple_choices = await ReadingMultipleChoiceModel.find(
-            ReadingMultipleChoiceModel.passage_id.id == passage.id
-        ).to_list()
-        
-        heading_matchings = await ReadingHeadingMatchingModel.find(
-            ReadingHeadingMatchingModel.passage_id.id == passage.id
-        ).to_list()
-        
-        fill_blanks = await ReadingFillBlankModel.find(
-            ReadingFillBlankModel.passage_id.id == passage.id
-        ).to_list()
-        
-        true_false_not_given = await ReadingTrueFalseNotGivenModel.find(
-            ReadingTrueFalseNotGivenModel.passage_id.id == passage.id
-        ).to_list()
+        import asyncio
+
+        # Lấy tất cả câu hỏi đồng thời
+        multiple_choices, heading_matchings, fill_blanks, true_false_not_given = await asyncio.gather(
+            ReadingMultipleChoiceModel.find(ReadingMultipleChoiceModel.passage_id.id == passage.id).to_list(),
+            ReadingHeadingMatchingModel.find(ReadingHeadingMatchingModel.passage_id.id == passage.id).to_list(),
+            ReadingFillBlankModel.find(ReadingFillBlankModel.passage_id.id == passage.id).to_list(),
+            ReadingTrueFalseNotGivenModel.find(ReadingTrueFalseNotGivenModel.passage_id.id == passage.id).to_list()
+        )
         
         # Khởi tạo kết quả
         detailed_results = {}
