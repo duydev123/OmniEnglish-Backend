@@ -13,11 +13,20 @@ class ContentSetDTO(BaseModel):
     type: str = "vocab"
 
 class CreateContentSetRequest(BaseModel):
-    title: str = Field(..., min_length=2)
+    title: str = Field(..., min_length=1)
     category: str = Field(default="GENERAL")
     itemsCount: int = Field(default=20)
     status: str = Field(default="Published")
     type: str = Field(default="vocab")
+    prompts: Optional[list] = None
+    questions: Optional[list] = None
+    description: Optional[str] = None
+    content: Optional[str] = None
+    audio_url: Optional[str] = None
+    transcript: Optional[str] = None
+    image_url: Optional[str] = None
+    is_full_test: Optional[bool] = False
+    tags: Optional[str] = None
 
 class UpdateContentSetRequest(BaseModel):
     title: Optional[str] = None

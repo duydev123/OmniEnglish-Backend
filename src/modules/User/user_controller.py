@@ -65,3 +65,12 @@ async def verify_forgot_otp(dto: VerifyOTPRequest):
 @router.post("/forgot-password/reset-password", status_code=status.HTTP_200_OK)
 async def reset_password_with_otp(dto: ResetPasswordRequest):
     return await user_service.reset_password_with_otp(dto)
+
+@router.post("/check-in", status_code=status.HTTP_200_OK)
+@router.post("/daily-checkin", status_code=status.HTTP_200_OK)
+async def daily_checkin(current_user: dict = Depends(UserUtil.Protect)):
+    return await user_service.daily_checkin(current_user)
+
+@router.get("/activity-logs", status_code=status.HTTP_200_OK)
+async def get_activity_logs(current_user: dict = Depends(UserUtil.Protect)):
+    return await user_service.get_activity_logs(current_user)

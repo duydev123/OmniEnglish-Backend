@@ -54,7 +54,7 @@ class MilestoneItem(BaseModel):
 # 1. BẢNG CHỦ ĐỀ / BỘ ĐỀ (Speaking Topic)
 # ==========================================
 class SpeakingTopicModel(Document):
-    title: str = Field(..., min_length=3)                     # VD: "IELTS Speaking Mock Test 1" hoặc "Topic: Environment"
+    title: str = Field(..., min_length=1)                     # VD: "IELTS Speaking Mock Test 1" hoặc "Topic: Environment"
     description: Optional[str] = None                         # Mô tả ngắn gọn bộ đề
     tags: List[str] = Field(default=[])                       # VD: ["Environment", "Pollution"]
     is_full_test: bool = Field(default=False)                 # Đánh dấu True nếu bộ này gom đủ cả Part 1, 2, 3 để thi thật
@@ -63,6 +63,10 @@ class SpeakingTopicModel(Document):
 
     class Settings:
         name = "speaking_topics"
+        indexes = [
+            [("created_at", -1)],
+            [("is_full_test", 1)]
+        ]
 
 # ==========================================
 # 2. BẢNG CÂU HỎI LẺ (Speaking Prompt)
@@ -73,7 +77,7 @@ class SpeakingPromptModel(Document):
     part: str = Field(..., pattern="^(PART_1|PART_2|PART_3)$")
     sub_topic: Optional[str] = None                           # Dành cho Part 1 (VD: "Hometown", "Work", v.v.)
     
-    question_text: str = Field(..., min_length=3)
+    question_text: str = Field(..., min_length=1)
     examiner_audio_url: Optional[str] = None                  # Giọng AI đọc câu hỏi
     
     # Gợi ý UI
@@ -86,6 +90,9 @@ class SpeakingPromptModel(Document):
 
     class Settings:
         name = "speaking_prompts"
+        indexes = [
+            [("topic_id", 1), ("part", 1)]
+        ]
 
 # ==========================================
 # 3. MODEL CHI TIẾT BÀI LÀM (User Session)

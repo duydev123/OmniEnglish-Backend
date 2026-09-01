@@ -22,6 +22,7 @@ class VocabularyCollectionModel(Document):
     
     words: List[str] = Field(default=[])        
     custom_words: List[Link[WordModel]] = Field(default=[]) 
+    type: str = Field(default="vocab") 
     
 
     is_official: bool = Field(default=False)    

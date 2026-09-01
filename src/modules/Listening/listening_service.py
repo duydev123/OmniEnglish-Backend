@@ -45,38 +45,40 @@ class ListeningService:
     @staticmethod
     async def list_passages(page: int = 1, limit: int = 10, question_type: Optional[str] = None):
         """Liệt kê passage listening có sẵn, hỗ trợ lọc theo question_type."""
+        import asyncio
         page = max(page, 1)
         limit = max(limit, 1)
 
         all_passages = await ListeningPassageModel.find_all().to_list()
         
-        items = []
-        for passage in all_passages:
+        async def process_passage(passage):
+            mc_task = ListeningMultipleChoiceModel.find(ListeningMultipleChoiceModel.passage_id.id == passage.id).count()
+            comp_task = ListeningCompletionModel.find(ListeningCompletionModel.passage_id.id == passage.id).count()
+            mc_cnt, comp_cnt = await asyncio.gather(mc_task, comp_task)
+
             q_types = []
-            if await ListeningMultipleChoiceModel.find(ListeningMultipleChoiceModel.passage_id.id == passage.id).count() > 0:
+            if mc_cnt > 0:
                 q_types.append("Multiple Choice")
-            if await ListeningCompletionModel.find(ListeningCompletionModel.passage_id.id == passage.id).count() > 0:
+            if comp_cnt > 0:
                 q_types.append("Fill Blank")
-            
-            # Tất cả các bài nghe đều có thể làm chép chính tả (Dictation)
             q_types.append("Dictation")
 
-            # Lọc theo question_type nếu có yêu cầu
             if question_type and question_type != "All":
                 if question_type not in q_types:
-                    continue
+                    return None
 
-            items.append(
-                ListeningPassageSummary(
-                    id=str(passage.id),
-                    title=passage.title,
-                    unit_code=passage.unit_code,
-                    audio_url=passage.audio_url,
-                    time_limit_minutes=passage.time_limit_minutes,
-                    total_questions=passage.total_questions,
-                    question_types=q_types
-                )
+            return ListeningPassageSummary(
+                id=str(passage.id),
+                title=passage.title,
+                unit_code=passage.unit_code,
+                audio_url=passage.audio_url,
+                time_limit_minutes=passage.time_limit_minutes,
+                total_questions=passage.total_questions,
+                question_types=q_types
             )
+
+        results = await asyncio.gather(*[process_passage(p) for p in all_passages])
+        items = [r for r in results if r is not None]
 
         total = len(items)
         start = (page - 1) * limit

@@ -37,32 +37,40 @@ class SpeakingService:
         if is_full_test is not None:
             query["is_full_test"] = is_full_test
 
+        import asyncio
+
         # Fetch topics từ Database
         topics = await SpeakingTopicModel.find(query).skip(skip).limit(limit).to_list()
         
-        # Lấy count số lượng prompts cho từng topic
-        result = []
-        for topic in topics:
+        async def fetch_summary(topic):
             prompt_count = await SpeakingPromptModel.find(
                 SpeakingPromptModel.topic_id.id == topic.id
             ).count()
-            
-            result.append(SpeakingTopicSummaryResponse(
+            return SpeakingTopicSummaryResponse(
                 id=str(topic.id),
                 title=topic.title,
                 description=topic.description,
                 tags=topic.tags,
                 is_full_test=topic.is_full_test,
                 prompt_count=prompt_count
-            ))
-            
-        return result
+            )
+
+        if not topics:
+            return []
+
+        return await asyncio.gather(*[fetch_summary(t) for t in topics])
 
     @staticmethod
     async def get_prompts_by_topic(topic_id: str) -> Dict[str, List[SpeakingPromptResponse]]:
         """Lấy tất cả prompts của một topic và nhóm theo Part."""
+        if not PydanticObjectId.is_valid(topic_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Bộ đề Speaking không hợp lệ hoặc không tồn tại!"
+            )
+
         # Check topic tồn tại
-        topic = await SpeakingTopicModel.get(topic_id)
+        topic = await SpeakingTopicModel.get(PydanticObjectId(topic_id))
         if not topic:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -31,6 +31,9 @@ class ListeningPassageModel(Document):
 
     class Settings:
         name = "listening_passages"
+        indexes = [
+            [("created_at", -1)]
+        ]
 
 
 class ListeningAudioSegmentModel(Document):
@@ -45,6 +48,9 @@ class ListeningAudioSegmentModel(Document):
 
     class Settings:
         name = "listening_audio_segments"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 
 
 # ==========================================
@@ -67,6 +73,9 @@ class ListeningMultipleChoiceModel(Document):
 
     class Settings:
         name = "listening_multiple_choices"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 
 
 class ListeningCompletionModel(Document):
@@ -80,6 +89,9 @@ class ListeningCompletionModel(Document):
 
     class Settings:
         name = "listening_completions"
+        indexes = [
+            [("passage_id", 1)]
+        ]
 
 
 class UserAnswer(BaseModel):
