@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status
 from typing import Optional
 from beanie import PydanticObjectId
-from models.UserModel import UserModel, UserSettings, UserStats, PasswordResetOTPModel, DailyActivityLogModel
+from models.User import UserModel, UserSettings, UserStats, PasswordResetOTPModel, DailyActivityLogModel
 from core.email_service import EmailService
 from .user_dto import (
     LoginRequest,

@@ -13,8 +13,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 load_dotenv()
 
 # Import models
-# from models.Paragraph import ParagraphModel, SentenceModel, WordModel
-from models.UserModel import UserModel, PasswordResetOTPModel, DailyActivityLogModel
+from models.User import UserModel, PasswordResetOTPModel, DailyActivityLogModel
+from models.VocabularyCollection import UserProgressModel, UserWordStatusModel, VocabularyCollectionModel
+from models.Vocabulary import WordModel
 
 # Import router
 from modules.User import user_controller
@@ -28,16 +29,6 @@ from modules.Speaking import speaking_controller
 from modules.Vocabulary import vocab_controller
 from modules.Auth import auth_controller
 from modules.Seed import seed_controller
-from models.VocabularyCollectionModel import UserProgressModel, UserWordStatusModel, VocabularyCollectionModel
-from models.Paragraph import WordModel
-
-# from models.Listening import (
-#     ListeningPassageModel,
-#     ListeningMultipleChoiceModel,
-#     ListeningCompletionModel,
-#     UserListeningSessionModel,
-#     UserDictationSessionModel
-# )
 
 from models.Reading import (
     ReadingPassageModel,
@@ -57,7 +48,7 @@ from models.Listening import (
     UserDictationSessionModel
 )
 
-from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Writing import WritingPromptModel, WritingSubmissionModel
 from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @asynccontextmanager

@@ -8,8 +8,8 @@ from beanie import init_beanie
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "src")))
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
-from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
-from models.Paragraph import WordModel
+from models.VocabularyCollection import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
+from models.Vocabulary import WordModel
 from modules.Vocabulary.vocab_service import VocabService
 
 async def main():

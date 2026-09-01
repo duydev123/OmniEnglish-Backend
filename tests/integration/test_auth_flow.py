@@ -1,5 +1,5 @@
 import pytest
-from models.UserModel import UserModel
+from models.User import UserModel
 
 @pytest.mark.asyncio
 async def test_auth_flow_integration(client):

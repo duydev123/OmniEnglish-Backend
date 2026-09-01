@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from google import genai
 from google.genai import types
 
-from models.VocabularyCollectionModel import (
+from models.VocabularyCollection import (
     VocabularyCollectionModel,
     UserWordStatusModel,
     UserProgressModel,
@@ -35,7 +35,7 @@ from .Vocabulary_dto import (
     BulkAddWordsRequest,
     BulkUpdateWordsRequest
 )
-from models.Paragraph import WordModel, WordType
+from models.Vocabulary import WordModel, WordType
 
 logger = logging.getLogger(__name__)
 

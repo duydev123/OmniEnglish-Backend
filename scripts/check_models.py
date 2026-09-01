@@ -1,10 +1,19 @@
 import os
+import sys
 from google import genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 def list_available_models():
-    # Khởi tạo client (Đảm bảo bạn đã set GEMINI_API_KEY trong biến môi trường)
-    # Hoặc thay trực tiếp api_key="AIzaSy..." vào đây để test nhanh
-    client = genai.Client(api_key="GEMINI_API_KEY")
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        print("Không tìm thấy GEMINI_API_KEY trong file .env!")
+        return
+    client = genai.Client(api_key=api_key)
     
     print("Đang tải danh sách models...\n")
     

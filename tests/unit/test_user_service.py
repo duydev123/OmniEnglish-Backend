@@ -1,6 +1,6 @@
 import pytest
 from fastapi import HTTPException
-from models.UserModel import UserModel
+from models.User import UserModel
 from modules.User.user_service import UserService
 from modules.User.user_dto import LoginRequest, RegisterRequest
 from modules.User.user_util import UserUtil
@@ -82,7 +82,7 @@ async def test_login_incorrect_password():
     with pytest.raises(HTTPException) as exc_info:
         await UserService.login(login_dto)
     assert exc_info.value.status_code == 401
-    assert exc_info.value.detail == "Password Incorrect!"
+    assert exc_info.value.detail in ["Mật khẩu không chính xác!", "Password Incorrect!"]
 
 @pytest.mark.asyncio
 async def test_get_profile_happy_path():

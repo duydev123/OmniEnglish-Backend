@@ -1,14 +1,29 @@
 # Python virtual environment
 .venv/
 
-# Python cache
-__pycache__/
+venv/
 
-# Compiled Python files
+# Python cache & compiled files
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
 
 # Environment variables
 .env
 .env.*
+!.env.example
+
+# OS / IDE / Cache junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+coverage.xml

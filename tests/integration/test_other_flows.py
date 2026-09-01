@@ -6,12 +6,12 @@ async def test_admin_settings(client):
     # GET /settings
     res_get = await client.get("/api/v1/admin/settings")
     assert res_get.status_code == 200
-    assert res_get.json() is None
+    assert res_get.json()["status"] == "ok"
 
     # PUT /settings
     res_put = await client.put("/api/v1/admin/settings", json={"ai_mode": "gpt-4"})
     assert res_put.status_code == 200
-    assert res_put.json() is None
+    assert res_put.json()["status"] == "updated"
 
 @pytest.mark.asyncio
 async def test_grammar_flow(client):

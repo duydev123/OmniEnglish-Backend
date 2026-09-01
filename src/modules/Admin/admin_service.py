@@ -1,7 +1,7 @@
 from typing import List, Optional
 from datetime import datetime, timezone
 from beanie import PydanticObjectId
-from models.VocabularyCollectionModel import VocabularyCollectionModel
+from models.VocabularyCollection import VocabularyCollectionModel
 from .admin_dto import ContentSetDTO, CreateContentSetRequest, UpdateContentSetRequest, AdminCMSStatsDTO, AdminUserDTO
 
 class AdminService:

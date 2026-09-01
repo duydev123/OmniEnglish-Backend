@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient, ASGITransport
 from main import app
-from models.UserModel import UserModel
+from models.User import UserModel
 
 @pytest.mark.asyncio
 async def test_auth_signup_validation_uc01(mocker):

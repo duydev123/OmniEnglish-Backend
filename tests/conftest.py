@@ -18,7 +18,7 @@ from main import app
 from beanie import init_beanie
 
 # Import các models
-from models.UserModel import UserModel
+from models.User import UserModel
 from models.Reading import (
     ReadingPassageModel,
     ReadingMultipleChoiceModel,
@@ -35,9 +35,9 @@ from models.Listening import (
     ListeningCompletionModel,
     UserListeningSessionModel
 )
-from models.VocabularyCollectionModel import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
-from models.Paragraph import WordModel
-from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.VocabularyCollection import VocabularyCollectionModel, UserWordStatusModel, UserProgressModel
+from models.Vocabulary import WordModel
+from models.Writing import WritingPromptModel, WritingSubmissionModel
 from models.Speaking import SpeakingTopicModel, SpeakingPromptModel, UserSpeakingTestSessionModel, ShadowingSentenceModel
 
 @pytest.fixture(scope="session")

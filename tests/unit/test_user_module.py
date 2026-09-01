@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from beanie import PydanticObjectId
 from httpx import AsyncClient, ASGITransport
 from main import app
-from models.UserModel import UserModel
+from models.User import UserModel
 
 @pytest.mark.asyncio
 async def test_user_profile_management_uc29(mocker):
