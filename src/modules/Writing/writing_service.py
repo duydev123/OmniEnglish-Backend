@@ -5,7 +5,7 @@ from typing import List, Optional, Union
 from datetime import datetime, timezone
 from fastapi import HTTPException
 
-from models.WritingModel import (
+from models.Writing import (
     WritingPromptModel,
     WritingSubmissionModel,
     HighlightSpanModel,

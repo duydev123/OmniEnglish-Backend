@@ -3,7 +3,7 @@ from enum import Enum
 from typing import List, Optional
 from beanie import Document, Link
 from pydantic import Field
-from .Paragraph import WordModel
+from .Vocabulary import WordModel
 
 
 

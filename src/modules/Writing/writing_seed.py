@@ -1,5 +1,5 @@
 import logging
-from models.WritingModel import WritingPromptModel
+from models.Writing import WritingPromptModel
 
 logger = logging.getLogger("WritingSeed")
 

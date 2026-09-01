@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from fastapi import HTTPException
 from beanie import PydanticObjectId
 
-from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Writing import WritingPromptModel, WritingSubmissionModel
 
 logger = logging.getLogger("StorageService")
 

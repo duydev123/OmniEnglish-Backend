@@ -5,7 +5,7 @@ from beanie import init_beanie, PydanticObjectId
 from httpx import AsyncClient, ASGITransport
 
 from main import app
-from models.WritingModel import WritingPromptModel, WritingSubmissionModel
+from models.Writing import WritingPromptModel, WritingSubmissionModel
 from modules.User.user_util import UserUtil
 
 @pytest.fixture(autouse=True, scope="session")
