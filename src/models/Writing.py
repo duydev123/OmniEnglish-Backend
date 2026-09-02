@@ -38,7 +38,7 @@ class WritingPromptModel(Document):
     reference_image_url: Optional[str] = None
     ref_id: Optional[str] = None
     time_limit_minutes: int = 40
-    word_count_target: int = 250
+    word_count_target: int = 300
     suggested_structure: List[Dict[str, Any]] = Field(default_factory=list)
     advanced_vocabulary: List[str] = Field(default_factory=list)
     collocation_suggestions: Optional[Dict[str, List[str]]] = None

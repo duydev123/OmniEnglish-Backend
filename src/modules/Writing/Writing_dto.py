@@ -16,6 +16,8 @@ class WritingPromptResponse(BaseModel):
     user_status: Optional[str] = None
     draft_content: Optional[str] = None
     time_spent_seconds: Optional[int] = None
+    highest_score: Optional[float] = None
+    question_category: Optional[str] = None
 
 
 # --- AI Assistance Requests & Responses (UC-09, UC-10, UC-11) ---

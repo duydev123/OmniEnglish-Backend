@@ -21,7 +21,7 @@ from models.Listening import (
 
 # MongoDB connection string
 MONGODB_URI = "mongodb+srv://omni_english_db:duy123@cluster0.0clx1qx.mongodb.net/?appName=Cluster0"
-DATABASE_NAME = "omni_english"  # Tên database của bạn
+DATABASE_NAME = "omni_english_db"  # Tên database chính thức của dự án
 
 # Khởi tạo client
 client = motor.motor_asyncio.AsyncIOMotorClient(MONGODB_URI)

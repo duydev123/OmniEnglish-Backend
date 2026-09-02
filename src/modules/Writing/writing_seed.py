@@ -17,7 +17,7 @@ async def seed_writing_prompts():
             reference_image_url="https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
             ref_id="ARCH-204-URB",
             time_limit_minutes=45,
-            word_count_target=250,
+            word_count_target=300,
             suggested_structure=[
                 {
                     "section": "Introduction",
@@ -45,7 +45,7 @@ async def seed_writing_prompts():
             reference_image_url=None,
             ref_id="EDU-501-AI",
             time_limit_minutes=40,
-            word_count_target=250,
+            word_count_target=300,
             suggested_structure=[
                 {
                     "section": "Introduction",
@@ -73,7 +73,7 @@ async def seed_writing_prompts():
             reference_image_url=None,
             ref_id="ENV-302-ECO",
             time_limit_minutes=40,
-            word_count_target=250,
+            word_count_target=300,
             suggested_structure=[
                 {
                     "section": "Introduction",
