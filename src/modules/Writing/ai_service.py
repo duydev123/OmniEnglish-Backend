@@ -17,7 +17,7 @@ logger = logging.getLogger("AIService")
 # AI Configuration
 # ============================================================================
 class AIConfig:
-    DEFAULT_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    DEFAULT_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     OUTLINE_TEMPERATURE: float = float(os.getenv("AI_OUTLINE_TEMP", "0.2"))
     COLLOCATIONS_TEMPERATURE: float = float(os.getenv("AI_COLLOCATIONS_TEMP", "0.2"))
     SAMPLE_ESSAY_TEMPERATURE: float = float(os.getenv("AI_SAMPLE_ESSAY_TEMP", "0.2"))

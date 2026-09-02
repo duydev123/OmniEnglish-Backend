@@ -1131,7 +1131,7 @@ class VocabService:
         for attempt in range(max_retries):
             try:
                 response = client.models.generate_content(
-                    model='gemini-3.6-flash',
+                    model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         response_mime_type="application/json",
