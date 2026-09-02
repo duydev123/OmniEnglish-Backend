@@ -355,9 +355,9 @@ class WritingService:
             coherence_cohesion_score=float(eval_result.get("coherence_cohesion_score", 6.0)),
             lexical_resource_score=float(eval_result.get("lexical_resource_score", 6.0)),
             grammar_accuracy_score=float(eval_result.get("grammar_accuracy_score", 6.0)),
-            highlight_spans=[HighlightSpanModel(**span) for span in eval_result.get("highlight_spans", [])],
-            specific_errors=[SpecificError(**err) for err in eval_result.get("specific_errors", [])],
-            improvements_comparison=[ImprovementComparisonModel(**imp) for imp in eval_result.get("improvements_comparison", [])],
+            highlight_spans=[HighlightSpanModel(**span) for span in eval_result.get("highlight_spans", []) if isinstance(span, dict)],
+            specific_errors=[SpecificError(**err) for err in eval_result.get("specific_errors", []) if isinstance(err, dict)],
+            improvements_comparison=[ImprovementComparisonModel(**imp) for imp in eval_result.get("improvements_comparison", []) if isinstance(imp, dict)],
             positive_feedback=eval_result.get("positive_feedback", []),
             actionable_next_steps=eval_result.get("actionable_next_steps", []),
             achieved_milestones=[
