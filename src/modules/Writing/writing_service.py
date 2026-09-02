@@ -48,23 +48,67 @@ class WritingService:
         return temps.get(action.upper(), 0.2)
 
     @staticmethod
+    def derive_question_category(task_type: str, title: str, description: str) -> str:
+        title_lower = (title or "").lower()
+        desc_lower = (description or "").lower()
+
+        if task_type == "WITH_GRAPH":
+            if "process" in title_lower or "recycle" in title_lower or "collection" in title_lower or "diagram" in desc_lower:
+                return "TASK 1 • PROCESS DIAGRAM"
+            if "map" in title_lower or "redevelopment" in title_lower or "layout" in title_lower or "map" in desc_lower:
+                return "TASK 1 • MAP"
+            if "bar" in title_lower or "subjects" in title_lower:
+                return "TASK 1 • BAR CHART"
+            if "pie" in title_lower:
+                return "TASK 1 • PIE CHART"
+            if "line" in title_lower or "fuel" in title_lower:
+                return "TASK 1 • LINE GRAPH"
+            return "TASK 1 • CHART / GRAPH"
+        else:
+            if "agree or disagree" in desc_lower or "opinion" in title_lower or "intelligence" in title_lower or "diagnostics" in title_lower:
+                return "TASK 2 • OPINION ESSAY"
+            if "discuss both views" in desc_lower or "discussion" in title_lower or "budget" in title_lower or "space" in title_lower:
+                return "TASK 2 • DISCUSSION ESSAY"
+            if "causes" in desc_lower or "measures" in desc_lower or "problem" in title_lower or "urban" in title_lower or "gridlock" in title_lower:
+                return "TASK 2 • PROBLEM & SOLUTION"
+            if "advantages" in desc_lower or "disadvantages" in desc_lower:
+                return "TASK 2 • ADVANTAGES & DISADVANTAGES"
+            return "TASK 2 • ESSAY"
+
+    @staticmethod
     async def get_writing_prompts(task_type: Optional[str] = None, user_id: Optional[str] = None) -> List[WritingPromptResponse]:
         prompts = await StorageService.get_all_prompts(task_type)
+        user_subs = await StorageService.get_all_user_submissions(user_id) if user_id else []
+
+        subs_by_prompt: Dict[str, List[WritingSubmissionModel]] = {}
+        for s in user_subs:
+            subs_by_prompt.setdefault(str(s.prompt_id), []).append(s)
+
         res = []
         for p in prompts:
+            p_id = str(p.id)
+            p_subs = subs_by_prompt.get(p_id, [])
+            
             user_status = None
             draft_content = None
             time_spent_seconds = None
-            if user_id:
-                latest = await StorageService.get_latest_submission(user_id, str(p.id))
-                if latest:
-                    user_status = latest.status
-                    if latest.status == "DRAFT":
-                        draft_content = latest.essay_content
-                        time_spent_seconds = latest.time_spent_seconds
+
+            if p_subs:
+                latest_sub = p_subs[0]
+                draft_content = latest_sub.essay_content
+                time_spent_seconds = latest_sub.time_spent_seconds
+                if latest_sub.status == "DRAFT":
+                    user_status = "DRAFT" if (draft_content and draft_content.strip()) else None
+                else:
+                    user_status = latest_sub.status
+
+            reviewed_scores = [s.overall_score for s in p_subs if s.status == "REVIEWED" and s.overall_score > 0]
+            highest_score = max(reviewed_scores) if reviewed_scores else None
+
+            question_cat = WritingService.derive_question_category(p.task_type, p.title, p.task_description)
             res.append(
                 WritingPromptResponse(
-                    id=str(p.id),
+                    id=p_id,
                     title=p.title,
                     task_type=p.task_type,
                     task_description=p.task_description,
@@ -76,7 +120,9 @@ class WritingService:
                     advanced_vocabulary=p.advanced_vocabulary or [],
                     user_status=user_status,
                     draft_content=draft_content,
-                    time_spent_seconds=time_spent_seconds
+                    time_spent_seconds=time_spent_seconds,
+                    highest_score=highest_score,
+                    question_category=question_cat
                 )
             )
         return res
@@ -87,13 +133,19 @@ class WritingService:
         user_status = None
         draft_content = None
         time_spent_seconds = None
+        highest_score = None
         if user_id:
             latest = await StorageService.get_latest_submission(user_id, str(prompt.id))
             if latest:
-                user_status = latest.status
+                draft_content = latest.essay_content
+                time_spent_seconds = latest.time_spent_seconds
                 if latest.status == "DRAFT":
-                    draft_content = latest.essay_content
-                    time_spent_seconds = latest.time_spent_seconds
+                    user_status = "DRAFT" if (draft_content and draft_content.strip()) else None
+                else:
+                    user_status = latest.status
+            highest_score = await StorageService.get_user_highest_score(user_id, str(prompt.id))
+
+        question_cat = WritingService.derive_question_category(prompt.task_type, prompt.title, prompt.task_description)
         return WritingPromptResponse(
             id=str(prompt.id),
             title=prompt.title,
@@ -107,7 +159,9 @@ class WritingService:
             advanced_vocabulary=prompt.advanced_vocabulary or [],
             user_status=user_status,
             draft_content=draft_content,
-            time_spent_seconds=time_spent_seconds
+            time_spent_seconds=time_spent_seconds,
+            highest_score=highest_score,
+            question_category=question_cat
         )
 
     @staticmethod
@@ -175,17 +229,13 @@ class WritingService:
     @classmethod
     async def _handle_outline(cls, prompt_doc: WritingPromptModel, user_notes: Optional[str] = None, difficulty: str = "medium") -> AIOutlineResponse:
         prompt_id_str = str(prompt_doc.id)
-        if prompt_doc.essay_outline and isinstance(prompt_doc.essay_outline, dict) and "sections" in prompt_doc.essay_outline:
-            return AIOutlineResponse(
-                prompt_id=prompt_id_str,
-                outline=[AIOutlineSection(**sec) for sec in prompt_doc.essay_outline.get("sections", [])]
-            )
 
         try:
             data = await AIService.generate_outline(
                 title=prompt_doc.title,
                 task_description=prompt_doc.task_description,
-                difficulty=difficulty
+                difficulty=difficulty,
+                reference_image_url=prompt_doc.reference_image_url
             )            
             validated_data = AIResponseValidator.validate_outline(data)
             return AIOutlineResponse(
@@ -215,18 +265,15 @@ class WritingService:
     @classmethod
     async def _handle_collocations(cls, prompt_doc: WritingPromptModel, user_notes: Optional[str] = None, difficulty: str = "medium") -> AICollocationsResponse:
         prompt_id_str = str(prompt_doc.id)
-        
-        # Nếu đã có sẵn trong database
-        if prompt_doc.collocation_suggestions and isinstance(prompt_doc.collocation_suggestions, dict):
-            groups = [
-                AICollocationGroup(category=k, items=v)
-                for k, v in prompt_doc.collocation_suggestions.items()
-            ]
-            return AICollocationsResponse(prompt_id=prompt_id_str, suggestions=groups)
 
         # Gọi AI
         try:
-            data = await AIService.generate_collocations(prompt_doc.title, prompt_doc.task_description, difficulty)
+            data = await AIService.generate_collocations(
+                title=prompt_doc.title,
+                task_description=prompt_doc.task_description,
+                difficulty=difficulty,
+                reference_image_url=prompt_doc.reference_image_url
+            )
             validated_data = AIResponseValidator.validate_collocations(data)
             return AICollocationsResponse(
                 prompt_id=prompt_id_str,
@@ -234,7 +281,6 @@ class WritingService:
             )
         except AIError as err:
             logger.error(f"AIService generate_collocations failed: {err}")
-            # ✅ Trả về lỗi thân thiện thay vì hard code
             raise HTTPException(
                 status_code=503,
                 detail={
@@ -258,28 +304,19 @@ class WritingService:
     async def _handle_sample_essay(cls, prompt_doc: WritingPromptModel, user_notes: Optional[str] = None, difficulty: str = "medium") -> AISampleEssayResponse:
         prompt_id_str = str(prompt_doc.id)
         
-        # Định nghĩa difficulty_labels ở ĐẦU hàm
         difficulty_labels = {
-            "easy": "Bài mẫu (Band 6-7)",
-            "medium": "Bài mẫu (Band 7-8)",
-            "advanced": "Bài mẫu (Band 8-9)"
+            "easy": "Model Essay (Band 6.0-7.0)",
+            "medium": "Model Essay (Band 7.0-8.0)",
+            "advanced": "Model Essay (Band 8.0-9.0)"
         }
-        
-        if prompt_doc.sample_essay and isinstance(prompt_doc.sample_essay, dict):
-            return AISampleEssayResponse(
-                prompt_id=prompt_id_str,
-                sample_title=prompt_doc.sample_essay.get("title", prompt_doc.title),
-                full_text=prompt_doc.sample_essay.get("full_text", ""),
-                structure_annotations=prompt_doc.sample_essay.get("annotations", []),
-                good_practices=prompt_doc.sample_essay.get("good_practices", [])
-            )
 
         try:
             data = await AIService.generate_sample_essay(
                 title=prompt_doc.title,
                 task_description=prompt_doc.task_description,
                 references={},  
-                difficulty=difficulty 
+                difficulty=difficulty,
+                reference_image_url=prompt_doc.reference_image_url
             )
             validated = AIResponseValidator.validate_sample_essay(data)
             return AISampleEssayResponse(
@@ -309,6 +346,7 @@ class WritingService:
                 "Formal tone throughout"
             ]
         )
+
     @staticmethod
     async def submit_writing_essay(user_id: str, payload: WritingDraftRequest) -> WritingSubmitResponse:
         if not payload.essay_content or not payload.essay_content.strip():
@@ -318,20 +356,25 @@ class WritingService:
 
         eval_result = None
         try:
-            eval_result = await AIService.evaluate_essay(prompt_doc.title, prompt_doc.task_description, payload.essay_content)
+            eval_result = await AIService.evaluate_essay(
+                title=prompt_doc.title,
+                task_description=prompt_doc.task_description,
+                essay_content=payload.essay_content,
+                reference_image_url=prompt_doc.reference_image_url
+            )
         except AIError as err:
             logger.warning(f"AIService evaluate_essay fallback: {err}")
 
         if not eval_result:
             essay_len = len(payload.essay_content.split())
-            base_score = 7.0 if essay_len >= prompt_doc.word_count_target else 6.0
+            base_score = 6.0 if essay_len >= prompt_doc.word_count_target else 5.0
             eval_result = {
                 "overall_score": base_score,
                 "potential_score": min(9.0, base_score + 1.0),
-                "general_summary": f"Your essay contains {essay_len} words addressing '{prompt_doc.title}'. Well structured with clear arguments.",
+                "general_summary": f"Your essay contains {essay_len} words addressing '{prompt_doc.title}'. Requires further enhancement in vocabulary precision and grammatical accuracy.",
                 "task_achievement_score": base_score,
-                "coherence_cohesion_score": base_score + 0.5,
-                "lexical_resource_score": base_score,
+                "coherence_cohesion_score": base_score,
+                "lexical_resource_score": base_score - 0.5 if base_score >= 5.5 else base_score,
                 "grammar_accuracy_score": base_score,
                 "specific_errors": [],
                 "highlight_spans": [],

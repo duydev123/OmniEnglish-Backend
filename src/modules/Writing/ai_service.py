@@ -1,4 +1,5 @@
 import asyncio
+import httpx
 import hashlib
 import json
 import logging
@@ -235,7 +236,7 @@ class AIResponseValidator:
             validated['full_text'] = "No essay content generated."
         if 'sample_title' not in validated or not validated['sample_title']:
             logger.warning("Missing 'sample_title' in AI sample essay response, filling default")
-            validated['sample_title'] = "Band 9.0 Model Essay"
+            validated['sample_title'] = "Model Essay"
         if 'structure_annotations' not in validated or not isinstance(validated['structure_annotations'], list):
             logger.warning("Missing 'structure_annotations' list in AI sample essay response, filling default")
             validated['structure_annotations'] = [
@@ -330,21 +331,21 @@ class UltimateIELTSPrompt:
     - Write a clear, well-structured essay
     - Use accessible vocabulary
     - Simple but effective arguments
-    - 250-280 words
+    - Word count: 250-265 words (STRICT UPPER LIMIT: 300 words)
     """,
             "medium": """
     **DIFFICULTY: MEDIUM (Band 7-8)**
     - Write a cohesive, academic essay
     - Use varied vocabulary
     - Well-developed arguments with examples
-    - 280-300 words
+    - Word count: 265-280 words (STRICT UPPER LIMIT: 300 words)
     """,
             "advanced": """
     **DIFFICULTY: ADVANCED (Band 8-9)**
     - Write a sophisticated, nuanced essay
     - Use advanced academic vocabulary
     - Complex arguments with counter-arguments
-    - 300-320 words
+    - Word count: 280-300 words (STRICT UPPER LIMIT: MUST NOT EXCEED 300 WORDS)
     """
         }
         
@@ -356,6 +357,9 @@ class UltimateIELTSPrompt:
     You are **Professor James Richardson**, a Senior IELTS Examiner.
 
     {difficulty_requirements.get(difficulty, difficulty_requirements['medium'])}
+
+    **⚠️ STRICT WORD COUNT CONSTRAINT:**
+    The generated sample essay MUST NOT exceed 300 words under any circumstances (Target: 250 - 300 words).
 
     ## 📌 YOUR TASK
     Write a model essay for:
@@ -373,8 +377,8 @@ class UltimateIELTSPrompt:
     Return JSON:
     {{
     "sample_title": "Model Essay: {title}",
-    "full_text": "[COMPLETE ESSAY]",
-    "word_count": 300,
+    "full_text": "[COMPLETE ESSAY (MAX 300 WORDS)]",
+    "word_count": 280,
     "structure_annotations": [
         {{"section": "Introduction", "note": "Clear thesis"}},
         {{"section": "Body 1", "note": "Main argument"}},
@@ -388,12 +392,16 @@ class UltimateIELTSPrompt:
     @staticmethod
     def generate_evaluation_prompt(title: str, description: str, essay_content: str) -> str:
         return f"""
-You are **Professor James Richardson**, a Senior IELTS Examiner with 20+ years of experience at Cambridge English Assessment.
-Evaluate the following student essay based strictly on official Cambridge IELTS criteria (Band 1.0 to 9.0):
-1. Task Achievement / Response (25%)
-2. Coherence & Cohesion (25%)
-3. Lexical Resource (25%)
-4. Grammatical Range & Accuracy (25%)
+You are **Professor James Richardson**, an extremely **STRICT, METICULOUS, and RIGOROUS** Senior IELTS Examiner with 20+ years of experience at Cambridge English Assessment.
+
+**⚠️ STRICT GRADING DIRECTIVES:**
+- Be **STRICT and UNFORGIVING**. Do NOT give generous or inflated scores. Real IELTS examiners are demanding.
+- Evaluate strictly according to official Cambridge IELTS Public Band Descriptors (Band 1.0 to 9.0).
+- **Task Response (25%)**: Deduct points if arguments are repetitive, lack depth, or fail to fully address all parts of the prompt.
+- **Coherence & Cohesion (25%)**: Deduct points for repetitive cohesive devices, poor paragraphing, or weak logical progression.
+- **Lexical Resource (25%)**: If vocabulary is basic or repetitive (A2/B1/B2), score must NOT exceed 5.5 or 6.0. Award Band 7.5+ ONLY if the student demonstrates natural, sophisticated academic collocations (C1/C2) with rare minor slips.
+- **Grammatical Range & Accuracy (25%)**: Deduct points for EVERY grammar, punctuation, subject-verb agreement, tense, or article error.
+- **Specific Error Detection**: Identify ALL specific grammatical flaws, awkward phrases, and vocabulary misuses in `specific_errors` and `highlight_spans`.
 
 Topic Title: "{title}"
 Task Description: "{description}"
@@ -403,19 +411,19 @@ Student Essay:
 
 Return ONLY a raw valid JSON object matching this schema:
 {{
-  "overall_score": 7.5,
-  "potential_score": 8.0,
-  "general_summary": "Comprehensive evaluation summary...",
-  "task_achievement_score": 7.5,
-  "coherence_cohesion_score": 8.0,
-  "lexical_resource_score": 7.0,
-  "grammar_accuracy_score": 7.5,
+  "overall_score": 6.0,
+  "potential_score": 7.0,
+  "general_summary": "Objective, strict evaluation of student essay strengths and clear weaknesses...",
+  "task_achievement_score": 6.0,
+  "coherence_cohesion_score": 6.0,
+  "lexical_resource_score": 5.5,
+  "grammar_accuracy_score": 6.0,
   "specific_errors": [
     {{
       "category": "Grammar",
       "original": "<exact phrase from student essay>",
       "correction": "<corrected phrase>",
-      "rule": "<explanation rule>"
+      "rule": "<strict explanation of grammar rule broken>"
     }}
   ],
   "highlight_spans": [
@@ -424,8 +432,8 @@ Return ONLY a raw valid JSON object matching this schema:
   "improvements_comparison": [
     {{ "category": "Grammar", "original": "<original sentence>", "improved": "<improved sentence>" }}
   ],
-  "positive_feedback": ["Good thesis statement", "Logical paragraphing"],
-  "actionable_next_steps": ["Use more varied transitional devices", "Review subject-verb agreement"]
+  "positive_feedback": ["Identified valid points"],
+  "actionable_next_steps": ["Key areas requiring rigorous improvement"]
 }}
 """
 
@@ -558,6 +566,23 @@ class AIService:
         return genai.Client(api_key=api_key)
 
     @classmethod
+    async def _fetch_image_part(cls, image_url: Optional[str]) -> Optional[types.Part]:
+        if not image_url or not image_url.startswith("http"):
+            return None
+        try:
+            async with httpx.AsyncClient(timeout=8.0, follow_redirects=True) as client:
+                resp = await client.get(image_url)
+                if resp.status_code == 200:
+                    content_type = resp.headers.get("content-type", "image/jpeg")
+                    if "image" not in content_type:
+                        content_type = "image/jpeg"
+                    logger.info(f"Loaded reference diagram image for Gemini Multimodal Vision: {image_url}")
+                    return types.Part.from_bytes(data=resp.content, mime_type=content_type)
+        except Exception as e:
+            logger.warning(f"Could not load image for Gemini Vision ({image_url}): {e}")
+        return None
+
+    @classmethod
     async def _call_with_retry(
         cls,
         func,
@@ -590,28 +615,17 @@ class AIService:
         raise last_error or AIAPIError("Unknown AI error")
 
     @classmethod
-    async def generate_outline(cls, title: str, task_description: str, difficulty: str = "medium") -> Any:
-        """
-        Generate a structured Band 9.0 essay outline using Gemini AI.
-
-        Args:
-            title: Essay prompt title
-            task_description: Detailed task description
-
-        Returns:
-            Parsed JSON array of section objects
-
-        Raises:
-            AIAPIError: If API call or timeout fails
-            AIResponseParseError: If response JSON parsing fails
-        """
+    async def generate_outline(cls, title: str, task_description: str, difficulty: str = "medium", reference_image_url: Optional[str] = None) -> Any:
         client = cls._get_client()
         prompt = UltimateIELTSPrompt.generate_outline_prompt(title, task_description, difficulty)
+        img_part = await cls._fetch_image_part(reference_image_url)
+        contents = [img_part, prompt] if img_part else prompt
 
         async def call_api():
-            return client.models.generate_content(
+            client = cls._get_client()
+            return await client.aio.models.generate_content(
                 model=AIConfig.DEFAULT_MODEL,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=AIConfig.OUTLINE_TEMPERATURE
@@ -629,14 +643,16 @@ class AIService:
 
 
     @classmethod
-    async def generate_collocations(cls, title: str, task_description: str,  difficulty: str = "medium" ) -> Any:
-        client = cls._get_client()
+    async def generate_collocations(cls, title: str, task_description: str, difficulty: str = "medium", reference_image_url: Optional[str] = None) -> Any:
         prompt = UltimateIELTSPrompt.generate_collocations_prompt(title, task_description, difficulty)
+        img_part = await cls._fetch_image_part(reference_image_url)
+        contents = [img_part, prompt] if img_part else prompt
 
         async def call_api():
-            return client.models.generate_content(
+            client = cls._get_client()
+            return await client.aio.models.generate_content(
                 model=AIConfig.DEFAULT_MODEL,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=AIConfig.COLLOCATIONS_TEMPERATURE
@@ -654,29 +670,16 @@ class AIService:
             raise AIAPIError(f"Collocations generation failed: {err}")
 
     @classmethod
-    async def generate_sample_essay(cls, title: str, task_description: str, references: Optional[dict] = None, difficulty: str = "medium") -> Any:
-        """
-        Generate a Band 9.0 model essay with structure annotations using Gemini AI.
-
-        Args:
-            title: Essay prompt title
-            task_description: Detailed task description
-            references: Optional reference materials (vocab, structure, sample essays)
-
-        Returns:
-            Parsed JSON object containing full essay text and metadata
-
-        Raises:
-            AIAPIError: If API call or timeout fails
-            AIResponseParseError: If response JSON parsing fails
-        """
-        client = cls._get_client()
+    async def generate_sample_essay(cls, title: str, task_description: str, references: Optional[dict] = None, difficulty: str = "medium", reference_image_url: Optional[str] = None) -> Any:
         prompt = UltimateIELTSPrompt.generate_sample_essay_prompt(title, task_description, references or {}, difficulty)
+        img_part = await cls._fetch_image_part(reference_image_url)
+        contents = [img_part, prompt] if img_part else prompt
 
         async def call_api():
-            return client.models.generate_content(
+            client = cls._get_client()
+            return await client.aio.models.generate_content(
                 model=AIConfig.DEFAULT_MODEL,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=AIConfig.SAMPLE_ESSAY_TEMPERATURE
@@ -693,29 +696,16 @@ class AIService:
             raise AIAPIError(f"Sample essay generation failed: {err}")
 
     @classmethod
-    async def evaluate_essay(cls, title: str, task_description: str, essay_content: str) -> Dict[str, Any]:
-        """
-        Evaluate a student essay based on official Cambridge IELTS criteria using Gemini AI.
-
-        Args:
-            title: Essay prompt title
-            task_description: Detailed task description
-            essay_content: Student essay text
-
-        Returns:
-            Parsed JSON object with scores, feedback, highlight spans, and specific errors
-
-        Raises:
-            AIAPIError: If API call or timeout fails
-            AIResponseParseError: If response JSON parsing fails
-        """
-        client = cls._get_client()
+    async def evaluate_essay(cls, title: str, task_description: str, essay_content: str, reference_image_url: Optional[str] = None) -> Dict[str, Any]:
         prompt = UltimateIELTSPrompt.generate_evaluation_prompt(title, task_description, essay_content)
+        img_part = await cls._fetch_image_part(reference_image_url)
+        contents = [img_part, prompt] if img_part else prompt
 
         async def call_api():
-            return client.models.generate_content(
+            client = cls._get_client()
+            return await client.aio.models.generate_content(
                 model=AIConfig.DEFAULT_MODEL,
-                contents=prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     temperature=AIConfig.EVALUATION_TEMPERATURE
@@ -746,7 +736,6 @@ class AIService:
             AIAPIError: If API call or timeout fails
             AIResponseParseError: If response JSON parsing fails
         """
-        client = cls._get_client()
         prompt = f"""
         You are **Professor James Richardson**, a Senior IELTS Examiner with 20+ years of experience at Cambridge English Assessment.
         Take the student's original essay below and rewrite an improved Band 9.0 version preserving original ideas:
@@ -762,7 +751,8 @@ class AIService:
         """
 
         async def call_api():
-            return client.models.generate_content(
+            client = cls._get_client()
+            return await client.aio.models.generate_content(
                 model=AIConfig.DEFAULT_MODEL,
                 contents=prompt,
                 config=types.GenerateContentConfig(
@@ -783,43 +773,52 @@ class AIService:
     @classmethod
     async def answer_question(cls, question: str, prompt_id: str) -> str:
         """Trả lời câu hỏi của user dựa trên đề bài"""
-        from ..Writing.storage_service import StorageService
-        
-        # 1. Lấy prompt document
-        prompt_doc = await StorageService.find_prompt_doc(prompt_id)
-        
-        # 2. Tạo prompt
-        prompt = f"""
-        You are an IELTS Writing Assistant. Answer the user's question based on the essay topic below.
+        from .storage_service import StorageService
 
-        **Topic:** {prompt_doc.title}
-        **Task Description:** {prompt_doc.task_description}
-
-        **User's Question:** {question}
-
-        **Rules:**
-        - Answer in Vietnamese
-        - Be specific and helpful
-        - Keep response under 200 words
-
-        Return JSON: {{"answer": "your response here"}}
-        """
-        
-        async def call_api():
-            client = cls._get_client()  # client ở đây
-            return client.models.generate_content(
-                model=AIConfig.DEFAULT_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    temperature=0.3
-                )
-            )
-        
         try:
+            # 1. Lấy prompt document
+            prompt_doc = await StorageService.find_prompt_doc(prompt_id)
+
+            # 2. Tạo prompt
+            prompt = f"""
+            You are an IELTS Writing Assistant. Answer the user's question based on the essay topic below.
+
+            **Topic:** {prompt_doc.title}
+            **Task Description:** {prompt_doc.task_description}
+
+            **User's Question:** {question}
+
+            **Rules:**
+            - Answer in Vietnamese
+            - Be specific, clear, and helpful
+            - Keep response concise and STRICTLY under 150-200 words (maximum 200 words).
+
+            Return JSON: {{"answer": "your response here"}}
+            """
+
+            async def call_api():
+                client = cls._get_client()
+                return await client.aio.models.generate_content(
+                    model=AIConfig.DEFAULT_MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        temperature=0.3
+                    )
+                )
+
             response = await cls._call_with_retry(call_api)
-            data = GeminiResponseParser.parse_json_response(response.text)
-            return data.get("answer", "Xin lỗi, mình chưa hiểu rõ câu hỏi.")
+            try:
+                data = GeminiResponseParser.parse_json_response(response.text)
+                if isinstance(data, dict) and "answer" in data:
+                    return str(data["answer"])
+                elif isinstance(data, str):
+                    return data
+            except Exception:
+                if response.text and response.text.strip():
+                    return response.text.strip()
+
+            return "Xin lỗi, mình chưa hiểu rõ câu hỏi."
         except Exception as e:
             logger.error(f"Answer question failed: {e}")
             return "Xin lỗi, mình không thể xử lý câu hỏi này. Vui lòng thử lại sau!"
