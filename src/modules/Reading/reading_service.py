@@ -342,6 +342,8 @@ class ReadingService:
         session.status = "COMPLETED"
         session.user_answers = user_answers
         session.completed_questions = total_questions
+        if total_questions > 0:
+            session.total_questions = total_questions
         session.time_remaining_seconds = time_remaining
         session.updated_at = datetime.now(UTC)
         await session.save()

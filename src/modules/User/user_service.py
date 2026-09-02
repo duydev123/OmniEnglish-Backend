@@ -95,31 +95,45 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
         ).to_list()
         if reading_sessions:
             reading_scores = [
-                (s.score / s.total_questions * 9.0) if s.total_questions > 0 else 0.0
+                (s.score / s.total_questions * 9.0) if getattr(s, "total_questions", 0) > 0 else 0.0
                 for s in reading_sessions
             ]
-            user.stats.avg_reading_score = round(sum(reading_scores) / len(reading_scores), 1)
+            valid_reading = [s for s in reading_scores if s >= 0]
+            if valid_reading:
+                user.stats.avg_reading_score = round(sum(valid_reading) / len(valid_reading), 1)
+            else:
+                user.stats.avg_reading_score = 0.0
         else:
             user.stats.avg_reading_score = 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error calculating reading stats: {e}")
 
-    # 2. Listening Average Band Score (1.0 - 9.0)
+    # 2. Listening Average Band Score (1.0 - 9.0) (Comprehension + Dictation)
     try:
-        from models.Listening import UserListeningSessionModel
+        from models.Listening import UserListeningSessionModel, UserDictationSessionModel
         listening_sessions = await UserListeningSessionModel.find(
             UserListeningSessionModel.user_id == user_id_str,
             UserListeningSessionModel.status == "COMPLETED"
         ).to_list()
-        if listening_sessions:
-            listening_scores = [
-                (s.accuracy_rate / 100.0 * 9.0) for s in listening_sessions
-            ]
+        dictation_sessions = await UserDictationSessionModel.find(
+            UserDictationSessionModel.user_id == user_id_str,
+            UserDictationSessionModel.status == "COMPLETED"
+        ).to_list()
+
+        listening_scores = []
+        for s in listening_sessions:
+            if getattr(s, "accuracy_rate", None) is not None:
+                listening_scores.append(s.accuracy_rate / 100.0 * 9.0)
+        for d in dictation_sessions:
+            if getattr(d, "accuracy_rate", None) is not None:
+                listening_scores.append(d.accuracy_rate / 100.0 * 9.0)
+
+        if listening_scores:
             user.stats.avg_listening_score = round(sum(listening_scores) / len(listening_scores), 1)
         else:
             user.stats.avg_listening_score = 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error calculating listening stats: {e}")
 
     # 3. Speaking Average Band Score (1.0 - 9.0)
     try:
@@ -129,15 +143,15 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             UserSpeakingTestSessionModel.status == "COMPLETED"
         ).to_list()
         if speaking_sessions:
-            speaking_scores = [s.overall_band_score for s in speaking_sessions if s.overall_band_score > 0]
+            speaking_scores = [s.overall_band_score for s in speaking_sessions if getattr(s, "overall_band_score", 0) > 0]
             if speaking_scores:
                 user.stats.avg_speaking_score = round(sum(speaking_scores) / len(speaking_scores), 1)
             else:
                 user.stats.avg_speaking_score = 0.0
         else:
             user.stats.avg_speaking_score = 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error calculating speaking stats: {e}")
 
     # 4. Writing Average Band Score (1.0 - 9.0)
     try:
@@ -146,15 +160,15 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             WritingSubmissionModel.user_id == user_id_str
         ).to_list()
         if writing_submissions:
-            valid_writing = [s.overall_score for s in writing_submissions if s.overall_score > 0]
+            valid_writing = [s.overall_score for s in writing_submissions if getattr(s, "overall_score", 0) > 0]
             if valid_writing:
                 user.stats.avg_writing_score = round(sum(valid_writing) / len(valid_writing), 1)
             else:
                 user.stats.avg_writing_score = 0.0
         else:
             user.stats.avg_writing_score = 0.0
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error calculating writing stats: {e}")
 
     # 5. Overall Average Score across active non-zero module scores
     active_scores = [
@@ -172,8 +186,8 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
 
     try:
         await user.save()
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Error saving user stats: {e}")
 
     return user.stats
 
