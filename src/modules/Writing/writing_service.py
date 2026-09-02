@@ -280,25 +280,30 @@ class WritingService:
                 prompt_id=prompt_id_str,
                 suggestions=[AICollocationGroup(**g) for g in validated_data]
             )
-        except AIError as err:
-            logger.error(f"AIService generate_collocations failed: {err}")
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "message": "AI dịch vụ đang bảo trì hoặc gặp sự cố. Vui lòng thử lại sau!",
-                    "error": str(err),
-                    "tip": "Bạn có thể thử lại trong vài phút hoặc chọn độ khó khác."
-                }
-            )
         except Exception as err:
-            logger.error(f"Unexpected error in _handle_collocations: {err}")
-            raise HTTPException(
-                status_code=500,
-                detail={
-                    "message": "Đã có lỗi xảy ra khi tạo gợi ý từ vựng. Vui lòng thử lại!",
-                    "error": str(err)
-                }
-            )
+            logger.warning(f"AIService generate_collocations fallback: {err}")
+
+        # Fallback to prompt_doc or defaults
+        groups = []
+        if getattr(prompt_doc, "collocation_suggestions", None):
+            for cat, items in prompt_doc.collocation_suggestions.items():
+                groups.append(AICollocationGroup(category=cat, items=items))
+        elif getattr(prompt_doc, "advanced_vocabulary", None):
+            groups.append(AICollocationGroup(category="Từ vựng quan trọng", items=prompt_doc.advanced_vocabulary))
+
+        if not groups:
+            groups = [
+                AICollocationGroup(
+                    category="Cấu trúc nâng cao",
+                    items=["play a vital role in", "have a profound impact on", "give rise to", "take into consideration"]
+                ),
+                AICollocationGroup(
+                    category="Từ nối luận điểm",
+                    items=["consequently", "furthermore", "in stark contrast to", "it is worth noting that"]
+                )
+            ]
+
+        return AICollocationsResponse(prompt_id=prompt_id_str, suggestions=groups)
 
 
     @classmethod

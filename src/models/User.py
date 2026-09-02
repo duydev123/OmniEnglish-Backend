@@ -25,6 +25,10 @@ class UserStats(BaseModel):
     avg_speaking_score: float = Field(default=0.0)
     avg_writing_score: float = Field(default=0.0)
     overall_score: float = Field(default=0.0)
+    reading_progress_pct: float = Field(default=0.0)
+    listening_progress_pct: float = Field(default=0.0)
+    speaking_progress_pct: float = Field(default=0.0)
+    writing_progress_pct: float = Field(default=0.0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

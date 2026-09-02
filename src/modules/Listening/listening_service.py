@@ -254,7 +254,8 @@ class ListeningService:
         passage = await session.passage_id.fetch()
         session.user_answers = user_answers
         session.time_remaining_seconds = time_remaining_seconds
-        session.completed_questions = min(len(user_answers), passage.total_questions)
+        non_empty_count = sum(1 for v in user_answers.values() if v and str(v).strip() != "")
+        session.completed_questions = min(non_empty_count, passage.total_questions)
         session.updated_at = datetime.now(UTC)
         await session.save()
         

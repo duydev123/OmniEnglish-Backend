@@ -135,7 +135,7 @@ class ListeningUtil:
             "status": session.status,
             "user_answers": [ans.dict() for ans in session.user_answers] if session.user_answers else [],
             "time_remaining_seconds": session.time_remaining_seconds or 0,
-            "completed_questions": len(session.user_answers) if session.user_answers else 0,
+            "completed_questions": sum(1 for a in session.user_answers if getattr(a, "answer", None) and str(a.answer).strip() != "") if session.user_answers else 0,
             "total_questions": passage.total_questions
         }
 
@@ -154,7 +154,7 @@ class ListeningUtil:
             "success": True,
             "message": "Comprehension draft saved successfully",
             "session_id": session_id,
-            "completed_questions": min(len(user_answers), passage.total_questions)
+            "completed_questions": min(sum(1 for a in user_answers if getattr(a, "answer", None) and str(a.answer).strip() != ""), passage.total_questions)
         }
 
     @staticmethod

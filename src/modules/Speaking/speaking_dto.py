@@ -140,6 +140,8 @@ class SpeakingHistoryItemResponse(BaseModel):
     session_id: str
     test_type: str
     title: str
+    topic_id: Optional[str] = None
+    prompt_id: Optional[str] = None
     overall_band_score: float
     duration_str: str
     status: str

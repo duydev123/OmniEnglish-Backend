@@ -567,23 +567,44 @@ class AdminService:
         )
 
     @staticmethod
-    async def update_user(user_id: str, payload) -> AdminUserDTO:
+    async def _find_user(user_id: str):
         from models.User import UserModel
-
-        u = None
+        if not user_id:
+            return None
         try:
             u = await UserModel.get(PydanticObjectId(user_id))
+            if u:
+                return u
         except Exception:
-            u = None
+            pass
+        try:
+            u = await UserModel.find_one(UserModel.email == user_id)
+            if u:
+                return u
+        except Exception:
+            pass
+        try:
+            u = await UserModel.find_one(UserModel.username == user_id)
+            if u:
+                return u
+        except Exception:
+            pass
+        try:
+            # Fallback scan all users if id string matches str(doc.id)
+            users = await UserModel.all().to_list()
+            for doc in users:
+                if str(doc.id) == str(user_id):
+                    return doc
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    async def update_user(user_id: str, payload) -> AdminUserDTO:
+        u = await AdminService._find_user(user_id)
 
         if not u:
-            try:
-                u = await UserModel.get(user_id)
-            except Exception:
-                u = None
-
-        if not u:
-            raise Exception(f"User {user_id} not found in MongoDB")
+            raise Exception(f"User '{user_id}' not found in MongoDB")
 
         if payload.username:
             u.username = payload.username
@@ -619,19 +640,7 @@ class AdminService:
 
     @staticmethod
     async def delete_user(user_id: str) -> dict:
-        from models.User import UserModel
-
-        u = None
-        try:
-            u = await UserModel.get(PydanticObjectId(user_id))
-        except Exception:
-            u = None
-
-        if not u:
-            try:
-                u = await UserModel.get(user_id)
-            except Exception:
-                u = None
+        u = await AdminService._find_user(user_id)
 
         if u:
             await u.delete()

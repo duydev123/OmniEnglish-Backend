@@ -1332,6 +1332,13 @@ class VocabService:
             )
             await new_user_progress.insert()
 
+        try:
+            from modules.User.user_service import record_activity, recalculate_and_save_user_stats
+            await record_activity(user_id, "VOCABULARY", f"Updated word progress in {collection.title}")
+            await recalculate_and_save_user_stats(user_id)
+        except Exception as err:
+            logger.warning(f"Failed to recalculate user stats for vocab update: {err}")
+
         return VocabularyProgressResponse(
             message="Word progress updated successfully!",
             user_id=user_id,
@@ -1357,6 +1364,7 @@ class VocabService:
         
         if user_progress:
             user_progress.study_time_seconds += payload.study_time_seconds
+            user_progress.accuracy_percentage = payload.accuracy_percentage
             user_progress.last_studied_at = datetime.now(UTC)
             user_progress.updated_at = datetime.now(UTC)
             await user_progress.save()
