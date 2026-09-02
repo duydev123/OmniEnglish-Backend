@@ -305,6 +305,14 @@ class SpeakingService:
 
         await session.save()
         
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(session.user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
+        
         # ==========================================
         # LOGIC TÌM CÂU HỎI TIẾP THEO CHO NÚT "NEXT"
         # ==========================================

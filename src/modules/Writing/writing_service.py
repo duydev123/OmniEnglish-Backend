@@ -409,6 +409,14 @@ class WritingService:
         )
         await StorageService.save_submission(submission)
 
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
+
         return WritingSubmitResponse(
             session_id=str(submission.id),
             status="REVIEWED",

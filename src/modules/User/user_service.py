@@ -57,6 +57,7 @@ def build_user_profile_response(user: UserModel, token: Optional[str] = None) ->
             avg_listening_score=stats.avg_listening_score,
             avg_speaking_score=stats.avg_speaking_score,
             avg_writing_score=stats.avg_writing_score,
+            overall_score=getattr(stats, "overall_score", 0.0),
         ),
     )
 
@@ -74,6 +75,107 @@ async def _get_user_by_id(user_id: str) -> Optional[UserModel]:
         return await UserModel.get(user_id)
     except Exception:
         return None
+
+
+async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
+    """Dynamically calculates user average band scores for Reading, Listening, Speaking, Writing and Overall Score."""
+    if not user:
+        return UserStats()
+
+    user_id_str = str(user.id)
+    if user.stats is None:
+        user.stats = UserStats()
+
+    # 1. Reading Average Band Score (1.0 - 9.0)
+    try:
+        from models.Reading import UserReadingSessionModel
+        reading_sessions = await UserReadingSessionModel.find(
+            UserReadingSessionModel.user_id == user_id_str,
+            UserReadingSessionModel.status == "COMPLETED"
+        ).to_list()
+        if reading_sessions:
+            reading_scores = [
+                (s.score / s.total_questions * 9.0) if s.total_questions > 0 else 0.0
+                for s in reading_sessions
+            ]
+            user.stats.avg_reading_score = round(sum(reading_scores) / len(reading_scores), 1)
+        else:
+            user.stats.avg_reading_score = 0.0
+    except Exception:
+        pass
+
+    # 2. Listening Average Band Score (1.0 - 9.0)
+    try:
+        from models.Listening import UserListeningSessionModel
+        listening_sessions = await UserListeningSessionModel.find(
+            UserListeningSessionModel.user_id == user_id_str,
+            UserListeningSessionModel.status == "COMPLETED"
+        ).to_list()
+        if listening_sessions:
+            listening_scores = [
+                (s.accuracy_rate / 100.0 * 9.0) for s in listening_sessions
+            ]
+            user.stats.avg_listening_score = round(sum(listening_scores) / len(listening_scores), 1)
+        else:
+            user.stats.avg_listening_score = 0.0
+    except Exception:
+        pass
+
+    # 3. Speaking Average Band Score (1.0 - 9.0)
+    try:
+        from models.Speaking import UserSpeakingTestSessionModel
+        speaking_sessions = await UserSpeakingTestSessionModel.find(
+            UserSpeakingTestSessionModel.user_id == user_id_str,
+            UserSpeakingTestSessionModel.status == "COMPLETED"
+        ).to_list()
+        if speaking_sessions:
+            speaking_scores = [s.overall_band_score for s in speaking_sessions if s.overall_band_score > 0]
+            if speaking_scores:
+                user.stats.avg_speaking_score = round(sum(speaking_scores) / len(speaking_scores), 1)
+            else:
+                user.stats.avg_speaking_score = 0.0
+        else:
+            user.stats.avg_speaking_score = 0.0
+    except Exception:
+        pass
+
+    # 4. Writing Average Band Score (1.0 - 9.0)
+    try:
+        from models.Writing import WritingSubmissionModel
+        writing_submissions = await WritingSubmissionModel.find(
+            WritingSubmissionModel.user_id == user_id_str
+        ).to_list()
+        if writing_submissions:
+            valid_writing = [s.overall_score for s in writing_submissions if s.overall_score > 0]
+            if valid_writing:
+                user.stats.avg_writing_score = round(sum(valid_writing) / len(valid_writing), 1)
+            else:
+                user.stats.avg_writing_score = 0.0
+        else:
+            user.stats.avg_writing_score = 0.0
+    except Exception:
+        pass
+
+    # 5. Overall Average Score across active non-zero module scores
+    active_scores = [
+        s for s in [
+            user.stats.avg_reading_score,
+            user.stats.avg_listening_score,
+            user.stats.avg_speaking_score,
+            user.stats.avg_writing_score
+        ] if s > 0
+    ]
+    if active_scores:
+        user.stats.overall_score = round(sum(active_scores) / len(active_scores), 1)
+    else:
+        user.stats.overall_score = 0.0
+
+    try:
+        await user.save()
+    except Exception:
+        pass
+
+    return user.stats
 
 
 class UserService:
@@ -142,6 +244,7 @@ class UserService:
                 detail="Auth not Found!"
             )
 
+        await recalculate_and_save_user_stats(user)
         return build_user_profile_response(user)
 
     @staticmethod

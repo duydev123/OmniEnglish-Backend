@@ -449,6 +449,14 @@ class ListeningService:
         session.updated_at = datetime.now(UTC)
         await session.save()
 
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(session.user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
+
         return ListeningSubmitResponse(
             session_id=session_id,
             session_type="COMPREHENSION",
@@ -558,6 +566,14 @@ class ListeningService:
         session.score = correct_words
         session.updated_at = datetime.now(UTC)
         await session.save()
+        
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(session.user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
         
         return ListeningSubmitResponse(
             session_id=session_id,

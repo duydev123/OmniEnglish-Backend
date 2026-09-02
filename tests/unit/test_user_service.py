@@ -144,3 +144,26 @@ async def test_auto_suggest_topic_vocabulary_collections_uc30():
     collections = await VocabService.get_official_collections()
     assert isinstance(collections, list)
 
+
+@pytest.mark.asyncio
+async def test_recalculate_and_save_user_stats():
+    from modules.User.user_service import recalculate_and_save_user_stats
+    register_dto = RegisterRequest(
+        username="statuser",
+        email="statuser@example.com",
+        password="Password123"
+    )
+    await UserService.register(register_dto)
+    user = await UserModel.find_one(UserModel.email == "statuser@example.com")
+    assert user is not None
+
+    user.stats.avg_reading_score = 8.0
+    user.stats.avg_listening_score = 7.0
+    user.stats.avg_speaking_score = 6.0
+    user.stats.avg_writing_score = 7.0
+    
+    stats = await recalculate_and_save_user_stats(user)
+    assert stats is not None
+    assert hasattr(stats, "overall_score")
+
+
