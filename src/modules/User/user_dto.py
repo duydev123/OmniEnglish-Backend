@@ -40,10 +40,11 @@ class UserStatsResponse(BaseModel):
     total_speaking_hours: float                             #[cite: 17]
     general_english_level: str                              #[cite: 17]
     business_english_progress: float                        #[cite: 17]
-    avg_reading_score: float                                #[cite: 17]
-    avg_listening_score: float                              #[cite: 17]
-    avg_speaking_score: float                               #[cite: 17]
-    avg_writing_score: float                                #[cite: 17]
+    avg_reading_score: float
+    avg_listening_score: float
+    avg_speaking_score: float
+    avg_writing_score: float
+    overall_score: float = 0.0
 
 # --- Request Social Login (Google / Facebook) ---
 class SocialLoginRequest(BaseModel):

@@ -342,10 +342,20 @@ class ReadingService:
         session.status = "COMPLETED"
         session.user_answers = user_answers
         session.completed_questions = total_questions
+        if total_questions > 0:
+            session.total_questions = total_questions
         session.time_remaining_seconds = time_remaining
         session.updated_at = datetime.now(UTC)
         await session.save()
         
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(session.user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
+
         # Tính accuracy
         accuracy_rate = (score / total_questions) * 100 if total_questions > 0 else 0
         

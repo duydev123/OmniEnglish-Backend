@@ -24,6 +24,7 @@ class UserStats(BaseModel):
     avg_listening_score: float = Field(default=0.0)
     avg_speaking_score: float = Field(default=0.0)
     avg_writing_score: float = Field(default=0.0)
+    overall_score: float = Field(default=0.0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

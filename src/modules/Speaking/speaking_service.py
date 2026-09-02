@@ -302,8 +302,31 @@ class SpeakingService:
             session.grammar_score = grammar_score
             session.overall_band_score = segment_score
             session.status = "COMPLETED"
+        elif session.topic_id:
+            graded_items = [q for q in session.questions_detail if getattr(q, "is_graded", False)]
+            if graded_items:
+                avg_pron = sum(getattr(q, "pronunciation_score", 0.0) for q in graded_items) / len(graded_items)
+                avg_flu = sum(getattr(q, "fluency_score", 0.0) for q in graded_items) / len(graded_items)
+                avg_lex = sum(getattr(q, "lexical_score", 0.0) for q in graded_items) / len(graded_items)
+                avg_gram = sum(getattr(q, "grammar_score", 0.0) for q in graded_items) / len(graded_items)
+                avg_overall = sum(getattr(q, "segment_score", 0.0) for q in graded_items) / len(graded_items)
+
+                session.pronunciation_score = round(avg_pron, 1)
+                session.fluency_score = round(avg_flu, 1)
+                session.lexical_score = round(avg_lex, 1)
+                session.grammar_score = round(avg_gram, 1)
+                session.overall_band_score = round(avg_overall, 1)
+                session.status = "COMPLETED"
 
         await session.save()
+        
+        try:
+            from modules.User.user_service import _get_user_by_id, recalculate_and_save_user_stats
+            user = await _get_user_by_id(session.user_id)
+            if user:
+                await recalculate_and_save_user_stats(user)
+        except Exception:
+            pass
         
         # ==========================================
         # LOGIC TÌM CÂU HỎI TIẾP THEO CHO NÚT "NEXT"
