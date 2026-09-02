@@ -238,7 +238,7 @@ class SpeakingUtil:
             
             try:
                 gemini_response = genai_client.models.generate_content(
-                    model='gemini-3.6-flash', 
+                    model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), 
                     contents=ai_prompt,
                     config=types.GenerateContentConfig(
                         temperature=0.2
@@ -512,7 +512,7 @@ class SpeakingUtil:
 
         try:
             gemini_response = genai_client.models.generate_content(
-                model='gemini-3.6-flash',
+                model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
                 contents=ai_prompt,
                 config=types.GenerateContentConfig(
                     temperature=0.3

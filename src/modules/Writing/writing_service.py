@@ -1,7 +1,8 @@
 from typing_extensions import Dict
 from modules.Writing.ai_service import GeminiResponseParser
 import logging
-from typing import List, Optional, Union
+import re
+from typing import List, Optional, Union, Any
 from datetime import datetime, timezone
 from fastapi import HTTPException
 
@@ -348,6 +349,58 @@ class WritingService:
         )
 
     @staticmethod
+    def _generate_heuristic_eval(essay_content: str, word_count_target: int, title: str) -> Dict[str, Any]:
+        words = essay_content.strip().split()
+        essay_len = len(words)
+        paragraphs = [p for p in essay_content.split('\n') if p.strip()]
+        para_count = len(paragraphs)
+
+        target = word_count_target or 250
+        length_ratio = min(1.2, essay_len / target)
+
+        unique_words = len(set(w.lower().strip(".,!?;:\"'") for w in words)) if words else 0
+        vocab_ratio = (unique_words / essay_len) if essay_len > 0 else 0
+
+        ta_score = min(8.5, round((4.5 + (length_ratio * 2.5) + (0.5 if para_count >= 3 else 0)) * 2) / 2)
+
+        transitions = ["however", "furthermore", "in addition", "consequently", "therefore", "on the other hand", "in conclusion", "firstly", "secondly", "for example", "for instance"]
+        found_transitions = sum(1 for t in transitions if t in essay_content.lower())
+        cc_score = min(8.5, round((4.5 + (1.0 if para_count >= 3 else 0.5) + min(1.5, found_transitions * 0.3)) * 2) / 2)
+
+        avg_word_len = (sum(len(w) for w in words) / essay_len) if essay_len > 0 else 0
+        lr_score = min(8.5, round((4.5 + (vocab_ratio * 3.0) + (0.5 if avg_word_len > 4.5 else 0)) * 2) / 2)
+
+        sentences = [s for s in re.split(r'[.!?]+', essay_content) if s.strip()]
+        avg_sent_len = (essay_len / len(sentences)) if sentences else 0
+        gr_score = min(8.5, round((4.5 + (0.5 if 12 <= avg_sent_len <= 25 else 0) + (0.5 if essay_len >= 150 else 0)) * 2) / 2)
+
+        overall = round(((ta_score + cc_score + lr_score + gr_score) / 4) * 2) / 2
+        potential = min(9.0, overall + 1.0)
+
+        return {
+            "overall_score": overall,
+            "potential_score": potential,
+            "general_summary": f"Your essay contains {essay_len} words ({para_count} paragraphs). Reached {int(length_ratio * 100)}% of target word count. Requires further enhancement in vocabulary precision and complex grammatical structures.",
+            "task_achievement_score": ta_score,
+            "coherence_cohesion_score": cc_score,
+            "lexical_resource_score": lr_score,
+            "grammar_accuracy_score": gr_score,
+            "specific_errors": [],
+            "highlight_spans": [],
+            "improvements_comparison": [],
+            "positive_feedback": [
+                f"Structured paragraphs ({para_count} paragraphs)",
+                f"Used {found_transitions} transitional phrases",
+                f"Word count: {essay_len}/{target}"
+            ],
+            "actionable_next_steps": [
+                "Expand academic C1/C2 vocabulary range",
+                "Use a wider variety of complex and compound sentence structures",
+                "Elaborate further on supporting arguments with concrete examples"
+            ]
+        }
+
+    @staticmethod
     async def submit_writing_essay(user_id: str, payload: WritingDraftRequest) -> WritingSubmitResponse:
         if not payload.essay_content or not payload.essay_content.strip():
             raise HTTPException(status_code=400, detail="Your essay is empty. Please write your response before submitting.")
@@ -366,22 +419,11 @@ class WritingService:
             logger.warning(f"AIService evaluate_essay fallback: {err}")
 
         if not eval_result:
-            essay_len = len(payload.essay_content.split())
-            base_score = 6.0 if essay_len >= prompt_doc.word_count_target else 5.0
-            eval_result = {
-                "overall_score": base_score,
-                "potential_score": min(9.0, base_score + 1.0),
-                "general_summary": f"Your essay contains {essay_len} words addressing '{prompt_doc.title}'. Requires further enhancement in vocabulary precision and grammatical accuracy.",
-                "task_achievement_score": base_score,
-                "coherence_cohesion_score": base_score,
-                "lexical_resource_score": base_score - 0.5 if base_score >= 5.5 else base_score,
-                "grammar_accuracy_score": base_score,
-                "specific_errors": [],
-                "highlight_spans": [],
-                "improvements_comparison": [],
-                "positive_feedback": ["Structured paragraphs", "Addressed prompt topic"],
-                "actionable_next_steps": ["Expand vocabulary range", "Use advanced linking phrases"]
-            }
+            eval_result = WritingService._generate_heuristic_eval(
+                payload.essay_content,
+                prompt_doc.word_count_target,
+                prompt_doc.title
+            )
 
         submission = WritingSubmissionModel(
             user_id=user_id,
