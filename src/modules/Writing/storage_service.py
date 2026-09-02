@@ -86,8 +86,40 @@ class StorageService:
 
     @staticmethod
     async def get_latest_submission(user_id: str, prompt_id: str) -> Optional[WritingSubmissionModel]:
-        submissions = await WritingSubmissionModel.find(
-            WritingSubmissionModel.user_id == user_id,
-            WritingSubmissionModel.prompt_id == prompt_id
-        ).sort(-WritingSubmissionModel.updated_at).to_list()
-        return submissions[0] if submissions else None
+        try:
+            res = WritingSubmissionModel.find(
+                WritingSubmissionModel.user_id == user_id,
+                WritingSubmissionModel.prompt_id == prompt_id
+            ).sort(-WritingSubmissionModel.updated_at).to_list()
+            if hasattr(res, "__await__"):
+                res = await res
+            return res[0] if res and isinstance(res, list) else None
+        except Exception:
+            return None
+
+    @staticmethod
+    async def get_user_highest_score(user_id: str, prompt_id: str) -> Optional[float]:
+        try:
+            res = WritingSubmissionModel.find(
+                WritingSubmissionModel.user_id == user_id,
+                WritingSubmissionModel.prompt_id == prompt_id,
+                WritingSubmissionModel.status == "REVIEWED"
+            ).to_list()
+            if hasattr(res, "__await__"):
+                res = await res
+            scores = [s.overall_score for s in (res or []) if getattr(s, 'overall_score', 0) > 0]
+            return max(scores) if scores else None
+        except Exception:
+            return None
+
+    @staticmethod
+    async def get_all_user_submissions(user_id: str) -> List[WritingSubmissionModel]:
+        try:
+            res = WritingSubmissionModel.find(
+                WritingSubmissionModel.user_id == user_id
+            ).sort(-WritingSubmissionModel.updated_at).to_list()
+            if hasattr(res, "__await__"):
+                res = await res
+            return res if isinstance(res, list) else []
+        except Exception:
+            return []

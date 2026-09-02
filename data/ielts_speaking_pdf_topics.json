@@ -1,0 +1,400 @@
+[
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Houses & Apartments",
+      "description": "Comprehensive speaking questions covering residential area, house/apartment features, preferences, and housing trends.",
+      "tags": ["Accommodation", "House", "Apartment", "Where You Live"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "Where do you currently live?",
+        "useful_vocabulary": ["Reside", "Inner city", "Suburbs", "Outskirts", "High-rise apartment"],
+        "ielts_tips": ["Give a direct short answer specifying location and structure, then explain."],
+        "examiner_tip": "Avoid repeating key words in the question like 'I live in...'. Use 'I currently reside in...'.",
+        "response_structure": [
+          { "section": "Direct Answer", "guide": "I currently reside in a spacious high-rise apartment..." },
+          { "section": "Explanation", "guide": "which is situated on the outskirts of the city." }
+        ]
+      },
+      {
+        "part": "PART_1",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "What do you like most about your home?",
+        "useful_vocabulary": ["Homely", "Spacious", "Mod cons", "Veranda", "Panoramic view"],
+        "ielts_tips": ["Use superlative structures or 'What I particularly enjoy is...'."],
+        "examiner_tip": "Focus on 1 or 2 specific features rather than listing everything.",
+        "response_structure": [
+          { "section": "Highlight", "guide": "What I find really impressive is the spacious balcony..." },
+          { "section": "Reason", "guide": "since it offers a breathtaking panoramic view of the neighborhood." }
+        ]
+      },
+      {
+        "part": "PART_1",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "If you could change anything about your home, what would it be?",
+        "useful_vocabulary": ["Redecorate", "Run down", "Cramped", "Install mod cons"],
+        "ielts_tips": ["Use hypothetical structures: 'If I had the chance, I would...'."],
+        "examiner_tip": "Demonstrate second conditional grammar naturally.",
+        "response_structure": [
+          { "section": "Hypothetical Change", "guide": "Given that the kitchen is looking a bit run down..." },
+          { "section": "Action", "guide": "it'd be great if we could have it completely renovated." }
+        ]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "Describe the house or apartment that you live in.",
+        "useful_vocabulary": ["Multi-storied house", "Single-storey", "Cosy", "All the mod cons", "Vicinity"],
+        "ielts_tips": ["Set the scene, describe key features, share a personal experience or story, and state your overall feeling."],
+        "examiner_tip": "Use 1 minute preparation time to outline a story about a problem or renovation.",
+        "response_structure": [
+          { "section": "Introduction/Setting", "guide": "As far back as I can remember, our family has lived in..." },
+          { "section": "Description", "guide": "In terms of its appearance, it is a two-storey house equipped with..." },
+          { "section": "Story/Problem", "guide": "I remember one time when we decided to redecorate..." },
+          { "section": "Final Outcome", "guide": "Overall, it provides a warm and homely atmosphere." }
+        ]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "What are the key differences between living in an apartment and a house?",
+        "useful_vocabulary": ["Panoramic views", "Draughty", "Maintenance fees", "Community atmosphere"],
+        "ielts_tips": ["Use comparative structures: 'While houses offer more space, apartments provide...'."],
+        "examiner_tip": "Speak about general societal trends rather than just your personal experience.",
+        "response_structure": [
+          { "section": "Main Difference", "guide": "While living in a house usually offers greater privacy and space..." },
+          { "section": "Contrasting Side", "guide": "apartments are far more convenient in terms of security and location." }
+        ]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Houses & Apartments",
+        "question_text": "Why do some people prefer to buy rather than rent a home?",
+        "useful_vocabulary": ["Financial asset", "Long-term investment", "Sense of security", "Property values"],
+        "ielts_tips": ["Explain reasons using linking words: 'In the main, it's because...'."],
+        "examiner_tip": "Include an example like housing market investments to support your point.",
+        "response_structure": [
+          { "section": "Main Reason", "guide": "In the main, it's typically because buying a home represents a solid investment..." },
+          { "section": "Second Reason", "guide": "As well as this, owning property gives people complete freedom to make structural changes." }
+        ]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Hometown & Neighbourhood",
+      "description": "Questions related to one's hometown, local amenities, changes over time, and urban vs rural living.",
+      "tags": ["Hometown", "Neighbourhood", "City", "Where You Live"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Hometown",
+        "question_text": "Can you tell me about your hometown?",
+        "useful_vocabulary": ["Bustling metropolis", "Coastal city", "Renowned for", "Gridlock traffic"],
+        "ielts_tips": ["Combine short answer + most notable feature."],
+        "examiner_tip": "Use vivid adjective collocations like 'bustling metropolis' or 'quaint country town'.",
+        "response_structure": [
+          { "section": "Setting", "guide": "I was born and bred in..." },
+          { "section": "Notable Feature", "guide": "and one of the most notable things about it is..." }
+        ]
+      },
+      {
+        "part": "PART_1",
+        "sub_topic": "Hometown",
+        "question_text": "Has your hometown changed much since you were a child?",
+        "useful_vocabulary": ["Urbanization", "Sprawling city", "Modernized infrastructure", "Vehicle emissions"],
+        "ielts_tips": ["Contrast past and present: 'While in the past... nowadays...'."],
+        "examiner_tip": "Use present perfect tense to highlight changes over time.",
+        "response_structure": [
+          { "section": "Past vs Present", "guide": "While it used to be a small rural town when I was young..." },
+          { "section": "Current State", "guide": "nowadays it has transformed into a bustling metropolis with high-rise buildings." }
+        ]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Hometown",
+        "question_text": "Describe your hometown.",
+        "useful_vocabulary": ["Born and bred", "Situated in", "Vibrant nightlife", "Sense of community"],
+        "ielts_tips": ["Introduce setting, describe features, tell a story about an event in your hometown."],
+        "examiner_tip": "Keep a steady pace and use complex sentences throughout the 2-minute speech.",
+        "response_structure": [
+          { "section": "Setting", "guide": "As far back as I can remember, my hometown of..." },
+          { "section": "Description", "guide": "It is renowned for its vibrant culture and rich historical landmarks..." },
+          { "section": "Story", "guide": "I remember during the annual festival..." },
+          { "section": "Outcome", "guide": "That experience made me appreciate the strong sense of community there." }
+        ]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Hometown",
+        "question_text": "Do you think large cities are more interesting to live in than small towns?",
+        "useful_vocabulary": ["Career opportunities", "Hustle and bustle", "Amenities", "Pace of life"],
+        "ielts_tips": ["Compare criteria like job opportunities, entertainment, and pace of life."],
+        "examiner_tip": "Use contrastive structures like 'If you live in a city... whereas if you reside in a town...'."
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: School & Education",
+      "description": "Questions about academic life, subjects, learning environments, and education systems.",
+      "tags": ["School", "Education", "Study", "What You Do"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Education",
+        "question_text": "What subject did you enjoy studying most at school?",
+        "useful_vocabulary": ["Curriculum", "Stimulating environment", "Practical knowledge", "Inspiring teacher"],
+        "ielts_tips": ["State subject + reason + example of a class activity."],
+        "response_structure": [
+          { "section": "Choice", "guide": "What I particularly enjoyed was..." },
+          { "section": "Reason", "guide": "because the teacher created a highly stimulating learning environment." }
+        ]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Education",
+        "question_text": "Describe a subject that you enjoyed studying at school.",
+        "useful_vocabulary": ["Indelibly etched", "Authoritative figure", "Empowered", "Laboratory experiments"],
+        "ielts_tips": ["Describe the subject, the teacher, a specific memorable incident, and what you gained."],
+        "response_structure": [
+          { "section": "Setting", "guide": "When I started my second year in high school..." },
+          { "section": "Teacher Description", "guide": "Her face is indelibly etched on my mind..." },
+          { "section": "Memorable Story", "guide": "I remember one time during a science experiment..." },
+          { "section": "Outcome", "guide": "It gave me the confidence to excel in academic pursuits." }
+        ]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Education",
+        "question_text": "Do you think private universities are better than public universities?",
+        "useful_vocabulary": ["Academic standards", "Tuition fees", "State-of-the-art facilities", "Well-qualified faculty"],
+        "ielts_tips": ["Weigh both sides before concluding."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Work & Career",
+      "description": "Questions on professions, workplace environment, career aspirations, and job satisfaction.",
+      "tags": ["Work", "Career", "Jobs", "What You Do"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Work",
+        "question_text": "What are your main responsibilities at work?",
+        "useful_vocabulary": ["In charge of", "Job entails", "Heavy workload", "Multinational company"],
+        "ielts_tips": ["State primary responsibility + secondary duties + feeling."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Work",
+        "question_text": "Describe a job that you consider highly important.",
+        "useful_vocabulary": ["High level of accountability", "Demanding boss", "Vocation", "Competitive salary"],
+        "ielts_tips": ["Describe job duties, challenges faced, and societal impact."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Work",
+        "question_text": "Why do so many businesses fail in their first year?",
+        "useful_vocabulary": ["Financial mismanagement", "Lack of capital", "Fierce competition", "Market demand"],
+        "ielts_tips": ["Highlight key causes like cash flow issues and lack of experience."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Family & Relationships",
+      "description": "Covering family dynamics, child upbringing, friendship bonds, and social connections.",
+      "tags": ["Family", "Friends", "Relationships", "People"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Family",
+        "question_text": "Do you come from a large or small family?",
+        "useful_vocabulary": ["Immediate family", "Extended family", "Siblings", "Close-knit"],
+        "ielts_tips": ["Mention size and who resides together."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Friends",
+        "question_text": "Describe a friend with whom you like to spend your time.",
+        "useful_vocabulary": ["Like two peas in a pod", "Through thick and thin", "Confide in", "Down to earth"],
+        "ielts_tips": ["Introduce friend, shared interests, a story where they helped you, and your bond."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Relationships",
+        "question_text": "How have relationships between parents and children changed in recent years?",
+        "useful_vocabulary": ["Generation gap", "Open communication", "Parental pressure", "Digital divide"],
+        "ielts_tips": ["Contrast past strict discipline with modern democratic parenting."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Celebrities & Role Models",
+      "description": "Topics regarding famous people, public influence, paparazzi, and media coverage.",
+      "tags": ["Celebrities", "Fame", "Media", "People"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Celebrities",
+        "question_text": "Who is your favourite celebrity in your country?",
+        "useful_vocabulary": ["Household name", "Philanthropist", "Award-winning", "Hold in high regard"],
+        "ielts_tips": ["Mention why they are famous and their positive impact."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Celebrities",
+        "question_text": "Describe a person who has done a lot of work to help people.",
+        "useful_vocabulary": ["Rose to fame", "Philanthropic endeavours", "Inspiring role model", "Charitable organisation"],
+        "ielts_tips": ["Identify the person, their achievements, a specific project, and why they inspire you."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Celebrities",
+        "question_text": "What are the advantages and disadvantages of being famous?",
+        "useful_vocabulary": ["Loss of privacy", "Hounded by paparazzi", "Financial wealth", "Lives under a microscope"],
+        "ielts_tips": ["Structure with 'The primary benefit is... whereas the main drawback is...'."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Internet, Computers & Technology",
+      "description": "Questions on digital literacy, online activities, social networks, and technological evolution.",
+      "tags": ["Internet", "Computers", "Technology", "Leisure/Entertainment"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Internet",
+        "question_text": "How often do you use the internet?",
+        "useful_vocabulary": ["Indispensable", "Surf the web", "Digital age", "Routinely"],
+        "ielts_tips": ["State frequency and primary daily uses."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Technology",
+        "question_text": "Describe a website or app that you often use.",
+        "useful_vocabulary": ["Search engine", "Game changer", "Pertinent information", "User-friendly interface"],
+        "ielts_tips": ["Detail when you first discovered it, key features, and how it solves a problem for you."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Technology",
+        "question_text": "What are the limitations of technology when it comes to business relationships?",
+        "useful_vocabulary": ["Video conferencing", "Personal connection", "Non-verbal cues", "Immediacy"],
+        "ielts_tips": ["Explain why face-to-face interaction remains superior for trust."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Food & Cooking",
+      "description": "Questions regarding dietary habits, national cuisine, cooking skills, and dining preferences.",
+      "tags": ["Food", "Cooking", "Cuisine", "Objects"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Food",
+        "question_text": "What is your favourite type of food?",
+        "useful_vocabulary": ["Mouth-watering", "Nutritious", "Local delicacy", "Spicy aroma"],
+        "ielts_tips": ["Mention specific dishes and describe taste and flavor."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Cooking",
+        "question_text": "Describe a dish that you like.",
+        "useful_vocabulary": ["Delectable", "Freshest ingredients", "Hygienically prepared", "Savory taste"],
+        "ielts_tips": ["Describe ingredients, preparation, when you first ate it, and why you enjoy it."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Food Culture",
+        "question_text": "Why is it important for families to eat meals together?",
+        "useful_vocabulary": ["Strengthen family bonds", "Unwind", "Quality time", "Shared tradition"],
+        "ielts_tips": ["Highlight emotional and psychological benefits for family unity."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Travel & Tourism",
+      "description": "Exploring vacation choices, tourist destinations, cultural exchange, and eco-tourism.",
+      "tags": ["Travel", "Tourism", "Holidays", "Situations"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Travel",
+        "question_text": "Do you prefer traveling independently or on a package tour?",
+        "useful_vocabulary": ["Off the beaten track", "Backpacking", "Sense of freedom", "Fixed itinerary"],
+        "ielts_tips": ["Contrast independent travel with group tours."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Tourism",
+        "question_text": "Describe a tourist attraction you once visited.",
+        "useful_vocabulary": ["Breathtaking landscape", "Crystal clear water", "Secluded spot", "Recharge my batteries"],
+        "ielts_tips": ["Detail setting, activities, a minor challenge/problem, and the final feeling."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Tourism",
+        "question_text": "What negative impacts can international tourism have on local communities?",
+        "useful_vocabulary": ["Overcrowding", "Environmental degradation", "Commercialized", "Noise pollution"],
+        "ielts_tips": ["Mention littering, rise in prices, and loss of local culture."]
+      }
+    ]
+  },
+  {
+    "topic": {
+      "title": "IELTS Speaking Topic: Environmental Problems & Sustainability",
+      "description": "Questions on climate change, pollution, conservation efforts, and individual responsibility.",
+      "tags": ["Environment", "Global Warming", "Pollution", "Situations"],
+      "is_full_test": false
+    },
+    "prompts": [
+      {
+        "part": "PART_1",
+        "sub_topic": "Environment",
+        "question_text": "What do you do to help protect the environment?",
+        "useful_vocabulary": ["Reduce carbon footprint", "Recycle", "Eco-friendly", "Energy-efficient"],
+        "ielts_tips": ["Mention small daily actions like saving electricity and using reusable bags."]
+      },
+      {
+        "part": "PART_2",
+        "sub_topic": "Environment",
+        "question_text": "Describe an environmental problem in your country.",
+        "useful_vocabulary": ["Exhaust emissions", "Deforestation", "Severe threat", "Devastating impact"],
+        "ielts_tips": ["Define the issue, explain root causes, describe personal experience, and suggest solutions."]
+      },
+      {
+        "part": "PART_3",
+        "sub_topic": "Environment",
+        "question_text": "What should governments do to address global warming?",
+        "useful_vocabulary": ["Renewable energy", "Emission standards", "Strict penalties", "Alternative energy sources"],
+        "ielts_tips": ["Focus on policy changes like investing in solar/wind power and penalizing heavy polluters."]
+      }
+    ]
+  }
+]

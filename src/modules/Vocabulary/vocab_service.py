@@ -7,6 +7,7 @@ import asyncio
 import unicodedata
 import urllib.request
 import urllib.parse
+import difflib
 from datetime import UTC, datetime, timezone
 from typing import Optional, List, Any
 
@@ -144,7 +145,7 @@ def is_valid_ipa(text: str) -> bool:
 
 
 def is_nonsense_or_test_word(word: str, clean_word: str) -> bool:
-    """Filter out non-standard test strings like 'aa', 'bb', 'ccc', 'asdfghjk', 'qwerty'."""
+    """Filter out non-standard test strings, informal chat laughs, and non-dictionary terms like 'hihi', 'megaman', 'xyz'."""
     clean_lower = clean_word.lower().strip()
     if not clean_lower:
         return True
@@ -157,9 +158,19 @@ def is_nonsense_or_test_word(word: str, clean_word: str) -> bool:
     if len(set(clean_lower)) == 1 and clean_lower not in ["a", "i"]:
         return True
 
-    # Keyboard mashing
-    keyboard_mash = {"asdf", "qwerty", "zxcv", "asdfghjk", "qwertyuiop", "zxcvbnm", "lmao", "xyz"}
-    if clean_lower in keyboard_mash:
+    # Repeating 2-letter chat sounds (e.g. hihi, haha, hehe, huhu, kaka, gogo)
+    if len(clean_lower) >= 4 and len(clean_lower) % 2 == 0:
+        half = len(clean_lower) // 2
+        if clean_lower[:half] == clean_lower[half:] and clean_lower not in ["bulk", "team", "couscous", "murmur"]:
+            return True
+
+    # Non-dictionary chat slang, keyboard mash, pop-culture/character names
+    blocked_terms = {
+        "asdf", "qwerty", "zxcv", "asdfghjk", "qwertyuiop", "zxcvbnm", 
+        "lmao", "xyz", "skibidi", "hihi", "haha", "hehe", "huhu", "hoho", "kaka", "gogo",
+        "megaman", "pokemon", "goku", "naruto", "pikachu", "sonic", "mario", "batman", "superman"
+    }
+    if clean_lower in blocked_terms:
         return True
 
     return False
@@ -237,7 +248,7 @@ async def _fetch_from_free_dict(clean_word: str, client: Optional[httpx.AsyncCli
             return ("", False)
     except Exception as e:
         logger.debug(f"Free Dictionary API lookup error for '{clean_word}': {e}")
-    return ("", False)
+    return ("", True)
 
 
 
@@ -250,8 +261,16 @@ async def _fetch_from_datamuse(clean_word: str, client: httpx.AsyncClient) -> st
         if resp.status_code == 200:
             data = resp.json()
             for item in data:
+                matched_word = item.get('word', '').lower()
+                is_exact = (matched_word == clean_word)
+                is_fuzzy = False
+                if not is_exact and item.get('score', 0) > 3000:
+                    sim = difflib.SequenceMatcher(None, matched_word, clean_word).ratio()
+                    if sim >= 0.80:
+                        is_fuzzy = True
+
                 # Require dictionary definitions ('defs') to exist to prevent phonetic guesses on gibberish like xyz or lmao
-                if item.get('word', '').lower() == clean_word and 'defs' in item and 'tags' in item:
+                if (is_exact or is_fuzzy) and 'defs' in item and 'tags' in item:
                     for tag in item['tags']:
                         if tag.startswith('pron:'):
                             raw_pron = tag[5:].strip().split()
