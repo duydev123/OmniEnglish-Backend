@@ -123,6 +123,14 @@ async def test_get_admin_users(mocker):
         assert res.json()[0]["role"] == "Admin"
 
 @pytest.mark.asyncio
+async def test_admin_service_get_users_direct(mocker):
+    from models.User import UserModel
+    mocker.patch.object(UserModel, 'all', return_value=MagicMock(to_list=AsyncMock(return_value=[])))
+    res = await AdminService.get_users()
+    assert isinstance(res, list)
+
+
+@pytest.mark.asyncio
 async def test_create_admin_user(mocker):
     mock_new_user = AdminUserDTO(
         id="u_2",
