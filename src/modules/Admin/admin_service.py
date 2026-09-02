@@ -119,7 +119,7 @@ class AdminService:
 
         # 5. Real Writing Prompts
         try:
-            from models.WritingModel import WritingPromptModel
+            from models.Writing import WritingPromptModel
             prompts = await WritingPromptModel.all().to_list()
             for w in prompts:
                 w_id = str(w.id)
@@ -251,7 +251,7 @@ class AdminService:
                 await q_doc.insert()
 
         elif set_type == "writing":
-            from models.WritingModel import WritingPromptModel
+            from models.Writing import WritingPromptModel
             prompt = WritingPromptModel(
                 title=payload.title,
                 task_type="WITH_GRAPH" if "TASK 1" in payload.category.upper() else "ESSAY",
@@ -346,7 +346,7 @@ class AdminService:
                 pass
 
             try:
-                from models.WritingModel import WritingPromptModel
+                from models.Writing import WritingPromptModel
                 w_prompt = await WritingPromptModel.get(oid)
                 if w_prompt and payload.title:
                     w_prompt.title = payload.title
@@ -431,7 +431,7 @@ class AdminService:
 
         # 5. Delete WritingPromptModel
         try:
-            from models.WritingModel import WritingPromptModel
+            from models.Writing import WritingPromptModel
             if PydanticObjectId.is_valid(clean_id):
                 w_prompt = await WritingPromptModel.get(PydanticObjectId(clean_id))
                 if w_prompt:
@@ -463,7 +463,7 @@ class AdminService:
         status_filter: Optional[str] = None,
         proficiency: Optional[str] = None,
     ) -> List[AdminUserDTO]:
-        from models.UserModel import UserModel
+        from models.User import UserModel
 
         users = await UserModel.all().to_list()
 
@@ -524,7 +524,7 @@ class AdminService:
 
     @staticmethod
     async def create_user(payload) -> AdminUserDTO:
-        from models.UserModel import UserModel, UserSettings, UserStats
+        from models.User import UserModel, UserSettings, UserStats
         from modules.User.user_util import UserUtil
 
         existing = await UserModel.find_one(UserModel.email == payload.email)
@@ -568,7 +568,7 @@ class AdminService:
 
     @staticmethod
     async def update_user(user_id: str, payload) -> AdminUserDTO:
-        from models.UserModel import UserModel
+        from models.User import UserModel
 
         u = None
         try:
@@ -619,7 +619,7 @@ class AdminService:
 
     @staticmethod
     async def delete_user(user_id: str) -> dict:
-        from models.UserModel import UserModel
+        from models.User import UserModel
 
         u = None
         try:
