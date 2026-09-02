@@ -119,15 +119,27 @@ app = FastAPI(title="omni english web", lifespan=lifespan)
 # Config CORS
 # Lưu ý: allow_origins=["*"] + allow_credentials=True là không hợp lệ (CORS spec),
 # trình duyệt sẽ block request. Cần chỉ định cụ thể origin hoặc tắt credentials.
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173"
-).split(",")
+DEFAULT_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "https://omni-english-frontend.vercel.app",
+]
+
+env_origins = os.getenv("ALLOWED_ORIGINS")
+if env_origins:
+    ALLOWED_ORIGINS = [origin.strip().rstrip("/") for origin in env_origins.split(",") if origin.strip()]
+    if "https://omni-english-frontend.vercel.app" not in ALLOWED_ORIGINS:
+        ALLOWED_ORIGINS.append("https://omni-english-frontend.vercel.app")
+else:
+    ALLOWED_ORIGINS = DEFAULT_ORIGINS
 
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
