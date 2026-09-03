@@ -2,6 +2,7 @@ from typing_extensions import Dict
 from modules.Writing.ai_service import GeminiResponseParser
 import logging
 import re
+import html
 from typing import List, Optional, Union, Any
 from datetime import datetime, timezone
 from fastapi import HTTPException
@@ -166,13 +167,28 @@ class WritingService:
         )
 
     @staticmethod
+    def _clean_html_to_text(content: str) -> str:
+        if not content or '<' not in content:
+            return content
+        content = re.sub(r'<br\s*/?>', '\n', content, flags=re.IGNORECASE)
+        content = re.sub(r'</p>', '\n', content, flags=re.IGNORECASE)
+        content = re.sub(r'</div>', '\n', content, flags=re.IGNORECASE)
+        content = re.sub(r'</li>', '\n', content, flags=re.IGNORECASE)
+        content = re.sub(r'<[^>]+>', '', content)
+        content = html.unescape(content)
+        content = re.sub(r'\r\n', '\n', content)
+        content = re.sub(r'\n\s*\n\s*\n+', '\n\n', content)
+        return content.strip()
+
+    @staticmethod
     async def save_writing_draft(user_id: str, payload: WritingDraftRequest) -> WritingDraftResponse:
         prompt = await StorageService.find_prompt_doc(payload.prompt_id)
+        cleaned_content = WritingService._clean_html_to_text(payload.essay_content)
         submission = await StorageService.save_or_update_draft(
             user_id=user_id,
             prompt_id=str(prompt.id),
             prompt_title=prompt.title,
-            essay_content=payload.essay_content,
+            essay_content=cleaned_content,
             word_count=payload.word_count,
             time_spent_seconds=payload.time_spent_seconds
         )
@@ -407,6 +423,7 @@ class WritingService:
 
     @staticmethod
     async def submit_writing_essay(user_id: str, payload: WritingDraftRequest) -> WritingSubmitResponse:
+        payload.essay_content = WritingService._clean_html_to_text(payload.essay_content)
         if not payload.essay_content or not payload.essay_content.strip():
             raise HTTPException(status_code=400, detail="Your essay is empty. Please write your response before submitting.")
 
