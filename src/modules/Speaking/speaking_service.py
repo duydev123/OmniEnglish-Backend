@@ -241,7 +241,11 @@ class SpeakingService:
         # 4. Upload Audio & Gọi AI Chấm điểm câu này
         await SpeakingUtil.validate_audio_file(audio_file)
         audio_url = await SpeakingUtil.upload_audio_to_cloud(audio_file, folder=f"speaking/{session_id}")
-        eval_res = await SpeakingUtil.evaluate_single_audio_segment(audio_url, prompt.question_text)
+        eval_res = await SpeakingUtil.evaluate_single_audio_segment(
+            audio_url=audio_url, 
+            prompt_text=prompt.question_text,
+            part=getattr(prompt, "part", "PART_1")
+        )
         if not eval_res:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -311,11 +315,11 @@ class SpeakingService:
                 avg_gram = sum(getattr(q, "grammar_score", 0.0) for q in graded_items) / len(graded_items)
                 avg_overall = sum(getattr(q, "segment_score", 0.0) for q in graded_items) / len(graded_items)
 
-                session.pronunciation_score = round(avg_pron, 1)
-                session.fluency_score = round(avg_flu, 1)
-                session.lexical_score = round(avg_lex, 1)
-                session.grammar_score = round(avg_gram, 1)
-                session.overall_band_score = round(avg_overall, 1)
+                session.pronunciation_score = SpeakingUtil.round_to_ielts_band(avg_pron)
+                session.fluency_score = SpeakingUtil.round_to_ielts_band(avg_flu)
+                session.lexical_score = SpeakingUtil.round_to_ielts_band(avg_lex)
+                session.grammar_score = SpeakingUtil.round_to_ielts_band(avg_gram)
+                session.overall_band_score = SpeakingUtil.round_to_ielts_band(avg_overall)
                 session.status = "COMPLETED"
 
         await session.save()
@@ -570,7 +574,7 @@ class SpeakingService:
                 avg_score = round((acc + flu) / 2, 1)
 
                 # Quy đổi ra thang band score (0.0 - 9.0)
-                band_score = round((avg_score / 100) * 9.0, 1) if avg_score > 0 else 0.0
+                band_score = SpeakingUtil.round_to_ielts_band((avg_score / 100.0) * 9.0) if avg_score > 0 else 0.0
 
                 formatted_words_detail = []
                 for w in eval_res.get("words_detail", []):
@@ -603,8 +607,8 @@ class SpeakingService:
                     test_type="SHADOWING",
                     title=f"Shadowing: {sentence.english_text[:35]}...",
                     overall_band_score=band_score,
-                    pronunciation_score=round(acc / 10, 1),
-                    fluency_score=round(flu / 10, 1),
+                    pronunciation_score=SpeakingUtil.round_to_ielts_band((acc / 100.0) * 9.0),
+                    fluency_score=SpeakingUtil.round_to_ielts_band((flu / 100.0) * 9.0),
                     questions_detail=[q_item],
                     status="COMPLETED"
                 )
