@@ -241,7 +241,11 @@ class SpeakingService:
         # 4. Upload Audio & Gọi AI Chấm điểm câu này
         await SpeakingUtil.validate_audio_file(audio_file)
         audio_url = await SpeakingUtil.upload_audio_to_cloud(audio_file, folder=f"speaking/{session_id}")
-        eval_res = await SpeakingUtil.evaluate_single_audio_segment(audio_url, prompt.question_text)
+        eval_res = await SpeakingUtil.evaluate_single_audio_segment(
+            audio_url=audio_url, 
+            prompt_text=prompt.question_text,
+            part=getattr(prompt, "part", "PART_1")
+        )
         if not eval_res:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -295,6 +299,11 @@ class SpeakingService:
                 )
             )
 
+        if not session.full_session_audio_url and audio_url:
+            session.full_session_audio_url = audio_url
+        if not session.ai_insights_summary and feedback:
+            session.ai_insights_summary = feedback
+
         if session.prompt_id and not session.topic_id:
             session.pronunciation_score = pron_score
             session.fluency_score = fluency_score
@@ -311,12 +320,19 @@ class SpeakingService:
                 avg_gram = sum(getattr(q, "grammar_score", 0.0) for q in graded_items) / len(graded_items)
                 avg_overall = sum(getattr(q, "segment_score", 0.0) for q in graded_items) / len(graded_items)
 
-                session.pronunciation_score = round(avg_pron, 1)
-                session.fluency_score = round(avg_flu, 1)
-                session.lexical_score = round(avg_lex, 1)
-                session.grammar_score = round(avg_gram, 1)
-                session.overall_band_score = round(avg_overall, 1)
+                session.pronunciation_score = SpeakingUtil.round_to_ielts_band(avg_pron)
+                session.fluency_score = SpeakingUtil.round_to_ielts_band(avg_flu)
+                session.lexical_score = SpeakingUtil.round_to_ielts_band(avg_lex)
+                session.grammar_score = SpeakingUtil.round_to_ielts_band(avg_gram)
+                session.overall_band_score = SpeakingUtil.round_to_ielts_band(avg_overall)
                 session.status = "COMPLETED"
+        else:
+            session.pronunciation_score = pron_score
+            session.fluency_score = fluency_score
+            session.lexical_score = lexical_score
+            session.grammar_score = grammar_score
+            session.overall_band_score = segment_score
+            session.status = "COMPLETED"
 
         await session.save()
         
@@ -379,8 +395,13 @@ class SpeakingService:
         if not session or session.user_id != user_id:
             raise HTTPException(status_code=404, detail="Không tìm thấy bài thi!")
             
-        # Tính toán thời lượng (nếu lưu ở dạng timestamp)
-        # Giả lập: duration_str = "12:30"
+        audio_url_final = session.full_session_audio_url
+        if not audio_url_final and session.questions_detail:
+            audio_url_final = session.questions_detail[0].user_audio_url
+
+        ai_insights_final = session.ai_insights_summary
+        if not ai_insights_final and session.questions_detail:
+            ai_insights_final = session.questions_detail[0].ai_feedback
             
         return SpeakingSessionDetailResponse(
             session_id=str(session.id),
@@ -388,7 +409,7 @@ class SpeakingService:
             title=session.title,
             duration_str=session.duration_str or "00:00",
             status=session.status,
-            full_session_audio_url=session.full_session_audio_url,
+            full_session_audio_url=audio_url_final,
             overall_band_score=session.overall_band_score,
             band_score_delta=session.band_score_delta,
             percentile_rank=session.percentile_rank,
@@ -399,7 +420,6 @@ class SpeakingService:
             key_strengths=session.key_strengths,
             areas_for_growth=session.areas_for_growth,
             
-            # SỬA LẠI ĐOẠN NÀY:
             questions_detail=[
                 QuestionDetailReview(
                     question_text=q.question_text,
@@ -409,7 +429,7 @@ class SpeakingService:
                 ) for q in session.questions_detail
             ] if session.questions_detail else [],
             
-            ai_insights_summary=session.ai_insights_summary,
+            ai_insights_summary=ai_insights_final,
             detailed_criteria_feedback=session.detailed_criteria_feedback,
             next_milestone=session.next_milestone,
             recommended_resources=session.recommended_resources,
@@ -570,7 +590,7 @@ class SpeakingService:
                 avg_score = round((acc + flu) / 2, 1)
 
                 # Quy đổi ra thang band score (0.0 - 9.0)
-                band_score = round((avg_score / 100) * 9.0, 1) if avg_score > 0 else 0.0
+                band_score = SpeakingUtil.round_to_ielts_band((avg_score / 100.0) * 9.0) if avg_score > 0 else 0.0
 
                 formatted_words_detail = []
                 for w in eval_res.get("words_detail", []):
@@ -603,8 +623,8 @@ class SpeakingService:
                     test_type="SHADOWING",
                     title=f"Shadowing: {sentence.english_text[:35]}...",
                     overall_band_score=band_score,
-                    pronunciation_score=round(acc / 10, 1),
-                    fluency_score=round(flu / 10, 1),
+                    pronunciation_score=SpeakingUtil.round_to_ielts_band((acc / 100.0) * 9.0),
+                    fluency_score=SpeakingUtil.round_to_ielts_band((flu / 100.0) * 9.0),
                     questions_detail=[q_item],
                     status="COMPLETED"
                 )
