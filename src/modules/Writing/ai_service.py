@@ -17,7 +17,7 @@ logger = logging.getLogger("AIService")
 # AI Configuration
 # ============================================================================
 class AIConfig:
-    DEFAULT_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    DEFAULT_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
     OUTLINE_TEMPERATURE: float = float(os.getenv("AI_OUTLINE_TEMP", "0.2"))
     COLLOCATIONS_TEMPERATURE: float = float(os.getenv("AI_COLLOCATIONS_TEMP", "0.2"))
     SAMPLE_ESSAY_TEMPERATURE: float = float(os.getenv("AI_SAMPLE_ESSAY_TEMP", "0.2"))
@@ -32,8 +32,8 @@ class AIConfig:
     OUTLINE_TIMEOUT: int = int(os.getenv("AI_OUTLINE_TIMEOUT", "15"))
     COLLOCATIONS_TIMEOUT: int = int(os.getenv("AI_COLLOCATIONS_TIMEOUT", "15"))
     SAMPLE_ESSAY_TIMEOUT: int = int(os.getenv("AI_SAMPLE_ESSAY_TIMEOUT", "60"))
-    EVALUATION_TIMEOUT: int = int(os.getenv("AI_EVALUATION_TIMEOUT", "25"))
-    IMPROVED_SAMPLE_TIMEOUT: int = int(os.getenv("AI_IMPROVED_SAMPLE_TIMEOUT", "25"))
+    EVALUATION_TIMEOUT: int = int(os.getenv("AI_EVALUATION_TIMEOUT", "45"))
+    IMPROVED_SAMPLE_TIMEOUT: int = int(os.getenv("AI_IMPROVED_SAMPLE_TIMEOUT", "45"))
 
     @classmethod
     def get_api_key(cls) -> str:
