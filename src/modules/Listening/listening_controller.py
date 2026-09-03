@@ -112,7 +112,8 @@ async def save_listening_draft(session_id: str, payload: ListeningDraftRequest):
         else:  # DICTATION
             result = await listening_service.save_dictation_draft(
                 session_id=session_id,
-                user_typed_text=payload.user_typed_text or ""
+                user_typed_text=payload.user_typed_text or "",
+                completed_questions=payload.completed_questions
             )
         
         return ListeningDraftResponse(
