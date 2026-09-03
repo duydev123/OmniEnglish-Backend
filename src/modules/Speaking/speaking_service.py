@@ -299,6 +299,11 @@ class SpeakingService:
                 )
             )
 
+        if not session.full_session_audio_url and audio_url:
+            session.full_session_audio_url = audio_url
+        if not session.ai_insights_summary and feedback:
+            session.ai_insights_summary = feedback
+
         if session.prompt_id and not session.topic_id:
             session.pronunciation_score = pron_score
             session.fluency_score = fluency_score
@@ -321,6 +326,13 @@ class SpeakingService:
                 session.grammar_score = SpeakingUtil.round_to_ielts_band(avg_gram)
                 session.overall_band_score = SpeakingUtil.round_to_ielts_band(avg_overall)
                 session.status = "COMPLETED"
+        else:
+            session.pronunciation_score = pron_score
+            session.fluency_score = fluency_score
+            session.lexical_score = lexical_score
+            session.grammar_score = grammar_score
+            session.overall_band_score = segment_score
+            session.status = "COMPLETED"
 
         await session.save()
         
@@ -383,8 +395,13 @@ class SpeakingService:
         if not session or session.user_id != user_id:
             raise HTTPException(status_code=404, detail="Không tìm thấy bài thi!")
             
-        # Tính toán thời lượng (nếu lưu ở dạng timestamp)
-        # Giả lập: duration_str = "12:30"
+        audio_url_final = session.full_session_audio_url
+        if not audio_url_final and session.questions_detail:
+            audio_url_final = session.questions_detail[0].user_audio_url
+
+        ai_insights_final = session.ai_insights_summary
+        if not ai_insights_final and session.questions_detail:
+            ai_insights_final = session.questions_detail[0].ai_feedback
             
         return SpeakingSessionDetailResponse(
             session_id=str(session.id),
@@ -392,7 +409,7 @@ class SpeakingService:
             title=session.title,
             duration_str=session.duration_str or "00:00",
             status=session.status,
-            full_session_audio_url=session.full_session_audio_url,
+            full_session_audio_url=audio_url_final,
             overall_band_score=session.overall_band_score,
             band_score_delta=session.band_score_delta,
             percentile_rank=session.percentile_rank,
@@ -403,7 +420,6 @@ class SpeakingService:
             key_strengths=session.key_strengths,
             areas_for_growth=session.areas_for_growth,
             
-            # SỬA LẠI ĐOẠN NÀY:
             questions_detail=[
                 QuestionDetailReview(
                     question_text=q.question_text,
@@ -413,7 +429,7 @@ class SpeakingService:
                 ) for q in session.questions_detail
             ] if session.questions_detail else [],
             
-            ai_insights_summary=session.ai_insights_summary,
+            ai_insights_summary=ai_insights_final,
             detailed_criteria_feedback=session.detailed_criteria_feedback,
             next_milestone=session.next_milestone,
             recommended_resources=session.recommended_resources,
