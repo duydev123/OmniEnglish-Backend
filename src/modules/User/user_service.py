@@ -116,6 +116,8 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
     if not user:
         return UserStats()
 
+    from modules.Speaking.speaking_util import round_to_ielts_band
+
     user_id_str = str(user.id)
     if user.stats is None:
         user.stats = UserStats()
@@ -138,7 +140,7 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             ]
             valid_reading = [s for s in reading_scores if s >= 0]
             if valid_reading:
-                user.stats.avg_reading_score = round(sum(valid_reading) / len(valid_reading), 1)
+                user.stats.avg_reading_score = round_to_ielts_band(sum(valid_reading) / len(valid_reading))
         
         unique_reading_ids = set()
         for s in reading_sessions:
@@ -171,7 +173,7 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
                 listening_scores.append(d.accuracy_rate / 100.0 * 9.0)
 
         if listening_scores:
-            user.stats.avg_listening_score = round(sum(listening_scores) / len(listening_scores), 1)
+            user.stats.avg_listening_score = round_to_ielts_band(sum(listening_scores) / len(listening_scores))
 
         unique_listening_ids = set()
         for s in listening_sessions:
@@ -196,7 +198,7 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
         if speaking_sessions:
             speaking_scores = [s.overall_band_score for s in speaking_sessions if getattr(s, "overall_band_score", 0) > 0]
             if speaking_scores:
-                user.stats.avg_speaking_score = round(sum(speaking_scores) / len(speaking_scores), 1)
+                user.stats.avg_speaking_score = round_to_ielts_band(sum(speaking_scores) / len(speaking_scores))
 
         unique_speaking_ids = set()
         for s in speaking_sessions:
@@ -219,7 +221,7 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
         if writing_submissions:
             valid_writing = [s.overall_score for s in writing_submissions if getattr(s, "overall_score", 0) > 0]
             if valid_writing:
-                user.stats.avg_writing_score = round(sum(valid_writing) / len(valid_writing), 1)
+                user.stats.avg_writing_score = round_to_ielts_band(sum(valid_writing) / len(valid_writing))
 
         unique_writing_ids = set()
         for s in writing_submissions:
@@ -251,9 +253,25 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
         ] if s > 0
     ]
     if active_scores:
-        user.stats.overall_score = round(sum(active_scores) / len(active_scores), 1)
+        user.stats.overall_score = round_to_ielts_band(sum(active_scores) / len(active_scores))
+    # 7. Derive CEFR level from overall IELTS band score (standard mapping)
+    #    Reference: https://www.ielts.org/about-ielts/ielts-and-the-cefr
+    band = user.stats.overall_score
+    if band >= 8.5:
+        cefr = "C2"
+    elif band >= 7.0:
+        cefr = "C1"
+    elif band >= 5.5:
+        cefr = "B2"
+    elif band >= 4.0:
+        cefr = "B1"
+    elif band >= 3.0:
+        cefr = "A2"
     else:
-        user.stats.overall_score = 0.0
+        cefr = "A1"
+
+    user.stats.general_english_level = cefr
+    user.proficiency_level = cefr
 
     try:
         await user.save()

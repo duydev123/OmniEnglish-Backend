@@ -24,7 +24,32 @@ cloudinary.config(
 )
 
 
+def round_to_ielts_band(score: float) -> float:
+    """
+    Rounds a raw band score to the official IELTS half-band scale (0.0, 0.5, 1.0, 1.5, ..., 9.0).
+    Official IELTS rounding rules:
+    - fractional part < 0.25 -> .0
+    - fractional part >= 0.25 and < 0.75 -> .5
+    - fractional part >= 0.75 -> next integer
+    """
+    if score is None or score <= 0:
+        return 0.0
+    if score >= 9.0:
+        return 9.0
+    
+    integer_part = int(score)
+    fraction = score - integer_part
+    if fraction < 0.25:
+        return float(integer_part)
+    elif fraction < 0.75:
+        return float(integer_part) + 0.5
+    else:
+        return float(integer_part) + 1.0
+
+
 class SpeakingUtil:
+    round_to_ielts_band = staticmethod(round_to_ielts_band)
+
     # ==========================================
     # 1. NHÓM XỬ LÝ FILE ÂM THANH & LƯU TRỮ (AUDIO & CLOUD)
     # ==========================================
@@ -74,10 +99,10 @@ class SpeakingUtil:
     # ==========================================
 
     @staticmethod
-    async def evaluate_single_audio_segment(audio_url: str, prompt_text: str) -> dict:
+    async def evaluate_single_audio_segment(audio_url: str, prompt_text: str, part: str = "PART_1") -> dict:
         """
         Gọi Azure Speech (lấy Pronunciation, Fluency, Transcript) 
-         + Gọi Gemini AI (lấy Grammar, Lexical, Overall, Feedback).
+         + Gọi Gemini AI (lấy Grammar, Lexical, Overall, Feedback dựa trên giáo trình chuẩn IELTS Michael C. Thorp).
         """
         # Khởi tạo các biến để đảm bảo khối finally không bị lỗi UnboundLocalError
         tmp_file_path = ""
@@ -134,8 +159,8 @@ class SpeakingUtil:
             if result.reason == speechsdk.ResultReason.RecognizedSpeech:
                 transcript = result.text
                 pronunciation_result = speechsdk.PronunciationAssessmentResult(result)
-                pronunciation_score = round((pronunciation_result.pronunciation_score / 100) * 9.0, 1)
-                fluency_score = round((pronunciation_result.fluency_score / 100) * 9.0, 1)
+                pronunciation_score = round_to_ielts_band((pronunciation_result.pronunciation_score / 100.0) * 9.0)
+                fluency_score = round_to_ielts_band((pronunciation_result.fluency_score / 100.0) * 9.0)
                 
                 # BẢNG MAP IPA
                 AZURE_TO_IPA = {
@@ -172,7 +197,7 @@ class SpeakingUtil:
                 )
 
             # ==========================================
-            # 3. GỌI GEMINI AI (GRAMMAR, LEXICAL & FEEDBACK)
+            # 3. GỌI GEMINI AI (CHẤM ĐIỂM CHUẨN KITE BOY / MICHAEL C. THORP)
             # ==========================================
             genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
             
@@ -183,57 +208,140 @@ class SpeakingUtil:
             ][:5]
             bad_words_str = ", ".join(bad_pronunciation_words) if bad_pronunciation_words else "Thí sinh phát âm rất tốt, không có lỗi nghiêm trọng."
             
-            ai_prompt = f"""
-            Bạn là một giám khảo IELTS chuyên nghiệp. Thí sinh vừa trả lời câu hỏi Speaking.
-            - Câu hỏi được giao: "{prompt_text}"
-            - Câu trả lời bóc băng của thí sinh (Transcript): "{transcript}"
+            part_upper = (part or "PART_1").upper()
             
-            [DỮ LIỆU TỪ HỆ THỐNG PHÂN TÍCH ÂM THANH]
-            - Điểm Phát âm ban đầu (Pronunciation): {pronunciation_score}/9.0
-            - Điểm Lưu loát ban đầu (Fluency): {fluency_score}/9.0
-            - Các từ phát âm sai/kém nhất: {bad_words_str}
-            
-            [QUY TẮC ĐÁNH GIÁ MẠCH LẠC & LẠC ĐỀ TRONG IELTS SPEAKING]
-            Lưu ý quan trọng: IELTS Speaking không có tiêu chí Task Response đứng riêng biệt. Tuy nhiên, nếu trả lời LẠC ĐỀ, nói sai câu hỏi, nói tùm bậy hoặc không liên quan, giám khảo sẽ TRỪ THẲNG VÀO TIÊU CHÍ ĐỘ LƯU LOÁT VÀ MẠCH LẠC (Fluency & Coherence) do câu trả lời thiếu đi sự liên kết, logic (Coherence) đối với câu hỏi được đặt ra.
-            
-            Hãy kiểm tra kỹ xem câu trả lời của thí sinh có liên quan đến câu hỏi "{prompt_text}" hay không:
-            1. Nếu thí sinh trả lời LẠC ĐỀ / NÓI TÀO LAO / KHÔNG LIÊN QUAN:
-               - Hãy đặt "is_off_topic": true.
-               - Đưa ra điểm "adjusted_fluency_score" bị trừ bớt từ 1.0 đến 3.0 điểm so với điểm ban đầu {fluency_score} (tối thiểu là 1.0).
-               - Trong "ai_insights" và "fluency_feedback", nêu rõ lời cảnh báo LẠC ĐỀ và lý do bị trừ điểm Fluency & Coherence.
-            2. Nếu thí sinh trả lời ĐÚNG TRỌNG TÂM:
-               - Đặt "is_off_topic": false.
-               - Đặt "adjusted_fluency_score" bằng hoặc gần bằng {fluency_score}.
+            # Diễn giải tiêu chí riêng cho từng Part từ giáo trình Michael C. Thorp (Kite Boy IELTS Speaking Series)
+            if "PART_2" in part_upper:
+                part_rubric = """
+[QUY TẮC BẮT BUỘC RIÊNG CHO PART 2 — INDIVIDUAL LONG TURN (BÀI NÓI DÀI 1.5–2 PHÚT)]
+- Mục tiêu: Nói liên tục từ 1.5 đến 2 phút theo lối kể chuyện (Storytelling approach) có chiều sâu và diễn biến logic.
+- Cấu trúc bài nói 3 phần chuẩn Michael C. Thorp:
+  1. Setting (Giới thiệu bối cảnh): Đưa ra thời gian, địa điểm, nhân vật, mục tiêu ("When I started my second year...", "Around 2 years ago...").
+  2. Main Events & Problem/Obstacle (Sự cố & Diễn biến chính): Phải nêu rõ vấn đề, thử thách hoặc sự cố gặp phải và cách giải quyết (Không có sự cố/vấn đề = bài nói bị khô khan, liệt kê điểm).
+  3. Final Outcome & Feelings (Kết quả & Bài học/Cảm xúc): Kết quả cuối cùng và cảm xúc/bài học rút ra.
+- QUY TẮC MỞ ĐẦU: KHÔNG đọc lại nguyên văn đề bài trên Cue Card (VD đề bảo "Describe a subject...", KHÔNG được bắt đầu "A subject I liked was..."). Phải mở đầu bằng một câu dẫn nhập cá nhân tự nhiên.
+- CẢNH BÁO THỜI LƯỢNG / BÀI NÓI NGẮN: Nếu bài nói dưới 80 từ (hoặc nói dưới 1 phút), trừ nặng điểm Fluency & Coherence (tối đa Band 5.0–5.5).
+- TỪ VỰNG & NGỮ PHÁP: Yêu cầu kết hợp thì quá khứ đơn chuẩn xác cho câu chuyện quá khứ và các cụm từ nối kể chuyện ("as far back as I can remember", "what I'll never forget was...", "it turned out that...").
+"""
+            elif "PART_3" in part_upper:
+                part_rubric = """
+[QUY TẮC BẮT BUỘC RIÊNG CHO PART 3 — TWO-WAY DISCUSSION (THẢO LUẬN KHÁI QUÁT XÃ HỘI)]
+- Mục tiêu: Thảo luận sâu sắc về các chủ đề mang tính xã hội, toàn cầu, cộng đồng (KHÔNG NÓI VỀ CÁ NHÂN!).
+- Cấu trúc chuẩn: General Opinion/Statement + Reason/Analysis + World Example/Implication.
+- CẤU TRÚC KHÁI QUÁT HÓA (Generalizing phrases): Sử dụng "By and large", "Generally speaking", "On the whole", "As a rule", "Nine times out of ten".
+- QUY TẮC VÀNG VỀ ĐỐI TƯỢNG (CRITICAL PART 3 RULE — NGUYÊN TẮC MICHAEL C. THORP):
+  TUYỆT ĐỐI KHÔNG NÓI VỀ BẢN THÂN, GIA ĐÌNH HAY BẠN BÈ TRONG PART 3! Part 3 yêu cầu bàn luận góc nhìn xã hội ("people", "society", "governments", "younger/older generations"). Nếu thí sinh dùng ví dụ cá nhân ("When I was...", "My brother...", "My friend..."), đây là lỗi không thể tư duy khái quát -> TRỪ THẲNG 1.0 đến 1.5 điểm vào Fluency & Coherence và Lexical Resource (Giới hạn tối đa Band 5.0–5.5). Nêu rõ cảnh báo này trong "off_topic_warning".
+- KỸ NĂNG TƯ DUY PHÂN TÍCH: Đánh giá cao việc so sánh (Quá khứ vs Hiện tại, Trẻ em vs Người lớn, Thành thị vs Nông thôn), phân tích Ưu/Nhược điểm, Nguyên nhân/Giải pháp, và Dự đoán tương lai.
+"""
+            else:
+                part_rubric = """
+[QUY TẮC BẮT BUỘC RIÊNG CHO PART 1 — EVERYDAY PERSONAL TOPICS (4-5 PHÚT, ~20s/CÂU)]
+- Mục tiêu: Trả lời tự nhiên, ngắn gọn nhưng đầy đủ (2-3 câu, 20-30 giây mỗi câu).
+- Cấu trúc chuẩn: Direct Answer + Reason/Explanation + Example/Detail (hoặc cấu trúc so sánh tình huống "if [situation 1] -> [result 1], whereas if [situation 2] -> [result 2]").
+- QUY TẮC TRÁNH LẶP TỪ CÂU HỎI: KHÔNG lặp lại nguyên văn từ ngữ trong câu hỏi. Phải dùng đại từ (one, it, they) hoặc từ đồng nghĩa/paraphrase ngay ở câu mở đầu.
+- CẢNH BÁO CÂU TRẢ LỜI QUÁ NGẮN: Nếu thí sinh chỉ trả lời 1 câu ngắn (dưới 15 từ) hoặc "Yes/No", trừ ngay điểm Fluency & Coherence xuống tối đa Band 5.0–5.5 (do thiếu khả năng phát triển ý).
+- CẢNH BÁO CÂU MỞ ĐẦU SÁO RỖNG: Tránh các câu filler vô nghĩa ("That's an interesting question...").
+- CẢNH BÁO LIỆT KÊ: Tránh trả lời liệt kê danh sách ("It has a park, a pool, and a mall") vì không thể hiện được cấu trúc ngữ pháp phức.
+- THÀNH NGỮ TỰ NHIÊN: Đánh giá cao Phrasal Verbs và Collocations tự nhiên. Phê bình nếu chèn ép thành ngữ gượng gạo ("knee high to a grasshopper").
+"""
 
-            Hãy đánh giá và trả về ĐÚNG cấu trúc JSON sau để hệ thống hiển thị lên giao diện app (Không dùng thẻ markdown ```json):
+            ai_prompt = f"""
+            Bạn là một giám khảo IELTS Speaking chính thức, khắt khe và giàu kinh nghiệm (dựa theo bộ tiêu chuẩn chấm thi IELTS chuẩn quốc tế trong sách "IELTS Speaking: The Most Comprehensive Guide All in One" của Michael C. Thorp - Giám khảo IELTS trên 20 năm).
+
+            Thí sinh vừa thực hiện phần thi IELTS Speaking ({part_upper}):
+            - Câu hỏi / Đề bài: "{prompt_text}"
+            - Transcript bài nói của thí sinh: "{transcript}"
+
+            [DỮ LIỆU TỪ HỆ THỐNG PHÂN TÍCH ÂM THANH — AZURE SPEECH AI]
+            - Điểm Phát âm ban đầu (Azure Pronunciation Score): {pronunciation_score}/9.0
+            - Điểm Lưu loát ban đầu (Azure Fluency Score): {fluency_score}/9.0
+            - Danh sách từ phát âm sai / điểm thấp nhất từ Azure: {bad_words_str}
+
+            {part_rubric}
+
+            [THANG ĐIỂM IELTS CHÍNH THỨC — BẮT BUỘC TUÂN THEO]
+            Bạn PHẢI chấm điểm trên thang IELTS Band Score từ 0.0 đến 9.0, CHỈ sử dụng các mức half-band (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0).
+            TUYỆT ĐỐI không dùng thang 10 hay số thập phân lẻ khác (như 6.2, 7.8, 2.1 là SAI).
+
+            [4 TIÊU CHÍ CHẤM ĐIỂM IELTS CHÍNH THỨC BẮT BUỘC DIỄN GIẢI KỸ]
+
+            1. PRONUNCIATION (Phát âm - P):
+            - Lấy điểm Azure ({pronunciation_score}/9.0) làm cơ sở ban đầu.
+            - Đánh giá dựa trên: Ngắt nhịp câu (Chunking), Trọng âm từ và câu (Stress), Giai điệu/Ngữ điệu (Intonation), và Độ chuẩn xác âm IPA.
+            - Lọc danh sách {bad_words_str}: Nếu nhiều từ cơ bản phát âm sai nghiêm trọng (Error: Mispronunciation, điểm < 60), trừ thêm 0.5–1.0 band.
+            - Band descriptors:
+              • 8.5–9.0: Phát âm cực kỳ tự nhiên, ngữ điệu chuẩn native, âm tiết rõ ràng hoàn toàn.
+              • 7.0–8.0: Phát âm rõ ràng, có ngắt nhịp và nhấn trọng âm tốt, lỗi nhỏ không đáng kể.
+              • 5.5–6.5: Phát âm tương đối dễ hiểu, còn lỗi trọng âm hoặc âm cuối (ending sounds).
+              • 4.0–5.0: Lỗi phát âm xuất hiện thường xuyên, ảnh hưởng trực tiếp đến người nghe.
+              • Dưới 4.0: Lỗi phát âm nghiêm trọng, khó hiểu.
+
+            2. FLUENCY & COHERENCE (Lưu loát & Mạch lạc - F&C):
+            - Lấy điểm Azure ({fluency_score}/9.0) làm cơ sở ban đầu.
+            - Đánh giá khả năng duy trì dòng nói, độ ngập ngừng (hesitation), tự sửa lỗi (self-correction), và tính liên kết logic.
+            - ÁP DỤNG CÁC QUY TẮC ĐẶC THÙ THEO PART VÀ LẠC ĐỀ:
+              • Quy tắc Lạc đề: IELTS không có tiêu chí Task Response riêng. Nếu trả lời LẠC ĐỀ hoặc sai trọng tâm câu hỏi "{prompt_text}", TRỪ TRỰC TIẾP 1.0 đến 3.0 điểm vào Fluency & Coherence.
+              • Quy tắc Part 3: Nếu Part 3 mà thí sinh lấy ví dụ cá nhân ("I", "my family", "my friends") thay vì nói về xã hội/con người nói chung, trừ 1.0-1.5 điểm F&C.
+              • Quy tắc Độ dài: Nếu câu trả lời quá ngắn (Part 1 < 15 từ, Part 2 < 80 từ), cap điểm F&C ở Band 5.0–5.5.
+            - Band descriptors:
+              • 8.0–9.0: Nói trôi chảy, tự nhiên, ý tưởng liên kết chặt chẽ, không ngập ngừng tìm từ.
+              • 6.5–7.5: Duy trì tốt nhịp nói, sử dụng từ nối tự nhiên, đôi khi ngập ngừng nhẹ.
+              • 5.0–6.0: Nói còn ngập ngừng, lặp từ hoặc phụ thuộc vào từ nối sáo rỗng.
+              • Dưới 5.0: Nói đứt quãng, không nối được ý hoàn chỉnh.
+
+            3. LEXICAL RESOURCE (Từ vựng - LR):
+            - Đánh giá độ phong phú, độ chính xác của từ vựng, khả năng Paraphrase và sử dụng Collocations / Phrasal Verbs.
+            - Quy tắc Paraphrase: Không lặp lại nguyên văn từ câu hỏi (khen ngợi nếu dùng đại từ hoặc từ đồng nghĩa phù hợp).
+            - Quy tắc Idiom: Đánh giá cao Phrasal Verbs và Collocations tự nhiên. Phê bình nếu chèn ép thành ngữ gượng gạo ("knee high to a grasshopper").
+            - Band descriptors:
+              • 8.5–9.0: Từ vựng vô cùng phong phú, sử dụng idioms và collocations chính xác, tự nhiên.
+              • 7.0–8.0: Từ vựng linh hoạt, sử dụng từ nâng cao và collocations tốt, ít lỗi nhỏ.
+              • 5.5–6.5: Từ vựng đủ dùng cho chủ đề nhưng còn cơ bản, lặp từ, Paraphrase chưa mượt.
+              • 4.0–5.0: Từ vựng hạn chế, dùng sai từ thường xuyên, không thể diễn đạt ý phức tạp.
+              • Dưới 4.0: Từ vựng rất nghèo nàn.
+
+            4. GRAMMATICAL RANGE & ACCURACY (Ngữ pháp - GRA):
+            - Đánh giá sự kết hợp giữa câu đơn và CÂU PHỨC (Complex Sentences với subordinating conjunctions: because, since, although, while, if, given that, provided that, relative clauses).
+            - Đánh giá độ chính xác: Thì của động từ (đặc biệt Past Simple trong kể chuyện), Hòa hợp chủ ngữ - động từ (Subject-verb agreement), Danh từ đếm được số nhiều.
+            - Band descriptors:
+              • 8.5–9.0: Cấu trúc câu đa dạng, phức tạp, hoàn toàn không có lỗi ngữ pháp.
+              • 7.0–8.0: Sử dụng linh hoạt các câu phức, phần lớn câu không có lỗi (error-free structures).
+              • 5.5–6.5: Có nỗ lực dùng câu phức nhưng còn mắc lỗi thì, s-v agreement, hoặc chủ yếu dùng câu đơn.
+              • 4.0–5.0: Lỗi ngữ pháp cơ bản xuất hiện dày đặc, gây khó hiểu.
+              • Dưới 4.0: Cấu trúc câu gãy vỡ.
+
+            LƯU Ý QUAN TRỌNG VỀ MỨC ĐIỂM THỰC TẾ:
+            Trình độ trung bình của học viên Việt Nam nằm ở mức Band 5.0 - 6.5. Band 7.0+ đòi hỏi sự chính xác và linh hoạt cao. Band 8.0+ rất hiếm. HÃY CHẤM THẬT NGHIÊM KHẮC, ĐÚNG CHUẨN GIÁM KHẢO IELTS, KHÔNG CHO ĐIỂM NÂNG ĐỠ.
+
+            Trả về ĐÚNG cấu trúc JSON sau (KHÔNG dùng thẻ markdown ```json):
             {{
-                "lexical_score": 7.5,
-                "grammar_score": 7.0,
-                "adjusted_fluency_score": 6.0,
-                "ai_insights": "Tóm tắt 1-2 câu về xu hướng phát âm, độ lưu loát, từ vựng và ngữ pháp. Nếu LẠC ĐỀ, nêu rõ cảnh báo thí sinh đã trả lời không đúng trọng tâm câu hỏi...",
+                "lexical_score": 5.5,
+                "grammar_score": 5.0,
+                "adjusted_fluency_score": 5.5,
+                "ai_insights": "Tóm tắt 1-2 câu nhận xét tổng quan bám sát tiêu chí Michael C. Thorp. Nêu rõ điểm mạnh và điểm yếu nổi bật nhất...",
                 "pronunciation_feedback": {{
-                    "word": "Từ thí sinh phát âm sai rõ nhất (lấy từ danh sách âm thanh ở trên)",
-                    "issue": "Mô tả lỗi (VD: Âm cuối bị nuốt hoàn toàn...)",
-                    "tip": "Mẹo cải thiện (VD: Luyện tập Shadowing...)"
+                    "word": "Từ phát âm sai rõ nhất (trích từ danh sách Azure)",
+                    "issue": "Mô tả lỗi âm tiết/trọng âm/âm cuối cụ thể",
+                    "tip": "Mẹo cải thiện (VD: Đặt lưỡi, phát âm ending sound, Shadowing...)"
                 }},
                 "grammar_feedback": {{
-                    "structure": "Tên cấu trúc (VD: Cấu trúc 'how to')",
-                    "issue": "Mô tả lỗi và cách sửa (VD: Bạn đã dùng 'how to applied'. Cấu trúc đúng: how to + V-inf)"
+                    "structure": "Cấu trúc ngữ pháp bị sai hoặc cần nâng cấp (VD: Thì quá khứ đơn, Cấu trúc 'although')",
+                    "issue": "Mô tả lỗi sai trong transcript và đưa ra câu sửa chuẩn ngữ pháp"
                 }},
                 "fluency_feedback": {{
-                    "is_off_topic": true/false,
-                    "off_topic_warning": "Nếu lạc đề: 'Cảnh báo: Trả lời không đúng trọng tâm câu hỏi. Trong IELTS Speaking, lỗi này trừ trực tiếp vào điểm Fluency & Coherence do thiếu tính liên kết logic.'",
-                    "positive_point": "Nhận xét về tốc độ nói, độ ngập ngừng...",
-                    "note": "Lưu ý để nói trôi chảy và mạch lạc hơn..."
+                    "is_off_topic": false,
+                    "off_topic_warning": "Nếu lạc đề hoặc vi phạm quy tắc Part (như dùng ví dụ cá nhân ở Part 3): Nêu rõ cảnh báo bị trừ điểm F&C...",
+                    "positive_point": "Nhận xét về tốc độ, ngắt nhịp (chunking) và sự phát triển ý",
+                    "note": "Khuyên bảo cụ thể theo hướng dẫn Michael C. Thorp"
                 }},
                 "vocabulary_feedback": {{
-                    "positive_point": "Điểm cộng từ vựng (VD: Điểm cộng: Collocations)",
-                    "positive_detail": "Trích dẫn từ hay (VD: Sử dụng tốt 'modern education system')",
-                    "note": "Gợi ý từ vựng nâng cao thay thế cho từ cơ bản thí sinh đã dùng"
+                    "positive_point": "Điểm cộng từ vựng (VD: Dùng tốt phrasal verb/collocation...)",
+                    "positive_detail": "Trích dẫn từ/cụm từ hay mà thí sinh đã dùng trong transcript",
+                    "note": "Gợi ý 2-3 từ vựng/collocation nâng cao (Band 7.0+) thay thế cho từ cơ bản"
                 }},
-                "sample_response": "Đưa ra 1 câu trả lời mẫu hoàn chỉnh chuẩn Band 8.0+ cho câu hỏi này bằng tiếng Anh (kèm giải nghĩa từ vựng hay hoặc dịch nghĩa tiếng Việt)."
+                "sample_response": "1 câu trả lời mẫu hoàn chỉnh Band 8.0+ bám sát cấu trúc khuyến nghị của Michael C. Thorp cho Part này (kèm giải nghĩa từ vựng nâng cao hoặc dịch tiếng Việt)."
             }}
-            Lưu ý: Viết bằng tiếng Việt tự nhiên, ngắn gọn và bám sát vào câu trả lời cũng như Dữ liệu âm thanh hệ thống cung cấp.
+            Viết bằng tiếng Việt tự nhiên, súc tích, chuyên nghiệp, thể hiện đẳng cấp của một giám khảo IELTS hàng đầu.
             """
             
             try:
@@ -252,12 +360,12 @@ class SpeakingUtil:
                         raw_output = raw_output[4:]
                 
                 ai_data = json.loads(raw_output.strip())
-                lexical_score = float(ai_data.get("lexical_score", 0.0))
-                grammar_score = float(ai_data.get("grammar_score", 0.0))
+                lexical_score = SpeakingUtil.round_to_ielts_band(float(ai_data.get("lexical_score", 0.0)))
+                grammar_score = SpeakingUtil.round_to_ielts_band(float(ai_data.get("grammar_score", 0.0)))
                 
-                adjusted_fluency = float(ai_data.get("adjusted_fluency_score", fluency_score))
+                adjusted_fluency = SpeakingUtil.round_to_ielts_band(float(ai_data.get("adjusted_fluency_score", fluency_score)))
                 if adjusted_fluency > 0:
-                    fluency_score = round(min(fluency_score, adjusted_fluency), 1)
+                    fluency_score = SpeakingUtil.round_to_ielts_band(min(fluency_score, adjusted_fluency))
 
                 sample_resp = ai_data.get("sample_response", "")
 
@@ -289,7 +397,7 @@ class SpeakingUtil:
                 }
                 feedback = json.dumps(fallback_dict, ensure_ascii=False)
 
-            segment_score = round((pronunciation_score + fluency_score + lexical_score + grammar_score) / 4.0, 1)
+            segment_score = SpeakingUtil.round_to_ielts_band((pronunciation_score + fluency_score + lexical_score + grammar_score) / 4.0)
 
             return {
                 "transcript": transcript,
