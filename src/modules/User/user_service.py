@@ -58,6 +58,10 @@ def build_user_profile_response(user: UserModel, token: Optional[str] = None) ->
             avg_speaking_score=stats.avg_speaking_score,
             avg_writing_score=stats.avg_writing_score,
             overall_score=getattr(stats, "overall_score", 0.0),
+            reading_progress_pct=getattr(stats, "reading_progress_pct", 0.0),
+            listening_progress_pct=getattr(stats, "listening_progress_pct", 0.0),
+            speaking_progress_pct=getattr(stats, "speaking_progress_pct", 0.0),
+            writing_progress_pct=getattr(stats, "writing_progress_pct", 0.0),
         ),
     )
 
@@ -77,6 +81,36 @@ async def _get_user_by_id(user_id: str) -> Optional[UserModel]:
         return None
 
 
+async def compute_user_streak(user_id: str) -> int:
+    """Calculates exact consecutive activity days ending on today (or yesterday)."""
+    logs = await DailyActivityLogModel.find({"user_id": str(user_id)}).to_list()
+    if not logs:
+        return 0
+    active_dates = set(l.date_str for l in logs)
+
+    now = datetime.now(timezone.utc)
+    today_str = now.strftime("%Y-%m-%d")
+    yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+    if today_str in active_dates:
+        curr_dt = now
+    elif yesterday_str in active_dates:
+        curr_dt = now - timedelta(days=1)
+    else:
+        return 0
+
+    streak = 0
+    while True:
+        d_str = curr_dt.strftime("%Y-%m-%d")
+        if d_str in active_dates:
+            streak += 1
+            curr_dt -= timedelta(days=1)
+        else:
+            break
+
+    return streak
+
+
 async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
     """Dynamically calculates user average band scores for Reading, Listening, Speaking, Writing and Overall Score."""
     if not user:
@@ -86,9 +120,13 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
     if user.stats is None:
         user.stats = UserStats()
 
-    # 1. Reading Average Band Score (1.0 - 9.0)
+    # Calculate exact consecutive streak days from DailyActivityLogModel
+    user.stats.current_streak_days = await compute_user_streak(user_id_str)
+
+    # 1. Reading Average Band Score & Completion Progress %
     try:
-        from models.Reading import UserReadingSessionModel
+        from models.Reading import ReadingPassageModel, UserReadingSessionModel
+        total_reading = await ReadingPassageModel.count()
         reading_sessions = await UserReadingSessionModel.find(
             UserReadingSessionModel.user_id == user_id_str,
             UserReadingSessionModel.status == "COMPLETED"
@@ -101,16 +139,20 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             valid_reading = [s for s in reading_scores if s >= 0]
             if valid_reading:
                 user.stats.avg_reading_score = round(sum(valid_reading) / len(valid_reading), 1)
-            else:
-                user.stats.avg_reading_score = 0.0
-        else:
-            user.stats.avg_reading_score = 0.0
+        
+        unique_reading_ids = set()
+        for s in reading_sessions:
+            if hasattr(s, "passage_id") and s.passage_id:
+                unique_reading_ids.add(str(s.passage_id.ref.id if hasattr(s.passage_id, "ref") else s.passage_id))
+        completed_reading = len(unique_reading_ids) or len(reading_sessions)
+        user.stats.reading_progress_pct = round((completed_reading / total_reading * 100), 1) if total_reading > 0 else 0.0
     except Exception as e:
         print(f"Error calculating reading stats: {e}")
 
-    # 2. Listening Average Band Score (1.0 - 9.0) (Comprehension + Dictation)
+    # 2. Listening Average Band Score & Completion Progress % (Comprehension + Dictation)
     try:
-        from models.Listening import UserListeningSessionModel, UserDictationSessionModel
+        from models.Listening import ListeningPassageModel, UserListeningSessionModel, UserDictationSessionModel
+        total_listening = await ListeningPassageModel.count()
         listening_sessions = await UserListeningSessionModel.find(
             UserListeningSessionModel.user_id == user_id_str,
             UserListeningSessionModel.status == "COMPLETED"
@@ -130,14 +172,23 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
 
         if listening_scores:
             user.stats.avg_listening_score = round(sum(listening_scores) / len(listening_scores), 1)
-        else:
-            user.stats.avg_listening_score = 0.0
+
+        unique_listening_ids = set()
+        for s in listening_sessions:
+            if hasattr(s, "passage_id") and s.passage_id:
+                unique_listening_ids.add(str(s.passage_id.ref.id if hasattr(s.passage_id, "ref") else s.passage_id))
+        for d in dictation_sessions:
+            if hasattr(d, "passage_id") and d.passage_id:
+                unique_listening_ids.add(str(d.passage_id.ref.id if hasattr(d.passage_id, "ref") else d.passage_id))
+        completed_listening = len(unique_listening_ids) or (len(listening_sessions) + len(dictation_sessions))
+        user.stats.listening_progress_pct = round((completed_listening / total_listening * 100), 1) if total_listening > 0 else 0.0
     except Exception as e:
         print(f"Error calculating listening stats: {e}")
 
-    # 3. Speaking Average Band Score (1.0 - 9.0)
+    # 3. Speaking Average Band Score & Completion Progress %
     try:
-        from models.Speaking import UserSpeakingTestSessionModel
+        from models.Speaking import SpeakingTopicModel, ShadowingSentenceModel, UserSpeakingTestSessionModel
+        total_speaking_items = (await SpeakingTopicModel.count()) + (await ShadowingSentenceModel.count())
         speaking_sessions = await UserSpeakingTestSessionModel.find(
             UserSpeakingTestSessionModel.user_id == user_id_str,
             UserSpeakingTestSessionModel.status == "COMPLETED"
@@ -146,16 +197,22 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             speaking_scores = [s.overall_band_score for s in speaking_sessions if getattr(s, "overall_band_score", 0) > 0]
             if speaking_scores:
                 user.stats.avg_speaking_score = round(sum(speaking_scores) / len(speaking_scores), 1)
-            else:
-                user.stats.avg_speaking_score = 0.0
-        else:
-            user.stats.avg_speaking_score = 0.0
+
+        unique_speaking_ids = set()
+        for s in speaking_sessions:
+            if hasattr(s, "prompt_id") and s.prompt_id:
+                unique_speaking_ids.add(str(s.prompt_id.ref.id if hasattr(s.prompt_id, "ref") else s.prompt_id))
+            elif getattr(s, "title", None):
+                unique_speaking_ids.add(s.title)
+        completed_speaking = len(unique_speaking_ids) or len(speaking_sessions)
+        user.stats.speaking_progress_pct = round((completed_speaking / total_speaking_items * 100), 1) if total_speaking_items > 0 else 0.0
     except Exception as e:
         print(f"Error calculating speaking stats: {e}")
 
-    # 4. Writing Average Band Score (1.0 - 9.0)
+    # 4. Writing Average Band Score & Completion Progress %
     try:
-        from models.Writing import WritingSubmissionModel
+        from models.Writing import WritingPromptModel, WritingSubmissionModel
+        total_writing = await WritingPromptModel.count()
         writing_submissions = await WritingSubmissionModel.find(
             WritingSubmissionModel.user_id == user_id_str
         ).to_list()
@@ -163,14 +220,28 @@ async def recalculate_and_save_user_stats(user: UserModel) -> UserStats:
             valid_writing = [s.overall_score for s in writing_submissions if getattr(s, "overall_score", 0) > 0]
             if valid_writing:
                 user.stats.avg_writing_score = round(sum(valid_writing) / len(valid_writing), 1)
-            else:
-                user.stats.avg_writing_score = 0.0
-        else:
-            user.stats.avg_writing_score = 0.0
+
+        unique_writing_ids = set()
+        for s in writing_submissions:
+            if hasattr(s, "prompt_id") and s.prompt_id:
+                unique_writing_ids.add(str(s.prompt_id.ref.id if hasattr(s.prompt_id, "ref") else s.prompt_id))
+        completed_writing = len(unique_writing_ids) or len(writing_submissions)
+        user.stats.writing_progress_pct = round((completed_writing / total_writing * 100), 1) if total_writing > 0 else 0.0
     except Exception as e:
         print(f"Error calculating writing stats: {e}")
 
-    # 5. Overall Average Score across active non-zero module scores
+    # 5. Vocabulary Words Learned count
+    try:
+        from models.VocabularyCollection import UserWordStatusModel
+        user_words = await UserWordStatusModel.find(
+            UserWordStatusModel.user_id == user_id_str
+        ).to_list()
+        unique_words = set(w.word for w in user_words if getattr(w, "word", None))
+        user.stats.total_words_learned = len(unique_words)
+    except Exception as e:
+        print(f"Error calculating vocabulary stats: {e}")
+
+    # 6. Overall Average Score across active non-zero module scores
     active_scores = [
         s for s in [
             user.stats.avg_reading_score,
@@ -200,6 +271,12 @@ class UserService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email not found!"
+            )
+
+        if user.status and user.status.lower() == "suspended":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản của bạn đã bị tạm khóa bởi Quản trị viên! Vui lòng liên hệ bộ phận hỗ trợ."
             )
 
         if not user.hashed_password:
@@ -258,6 +335,12 @@ class UserService:
                 detail="Auth not Found!"
             )
 
+        if user.status and user.status.lower() == "suspended":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản của bạn đã bị tạm khóa bởi Quản trị viên!"
+            )
+
         await recalculate_and_save_user_stats(user)
         return build_user_profile_response(user)
 
@@ -278,6 +361,11 @@ class UserService:
             )
             await user.insert()
         else:
+            if user.status and user.status.lower() == "suspended":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Tài khoản của bạn đã bị tạm khóa bởi Quản trị viên! Vui lòng liên hệ bộ phận hỗ trợ."
+                )
             if data.avatar and not user.avatar:
                 user.avatar = data.avatar
                 await user.save()
@@ -436,6 +524,46 @@ class UserService:
         return {"status": "success", "message": "Đặt lại mật khẩu thành công! Bạn có thể đăng nhập ngay."}
 
     @staticmethod
+    async def record_activity(user_id: str, xp: int = 10):
+        if not user_id:
+            return
+        user = await _get_user_by_id(user_id)
+        if not user:
+            return
+
+        now = datetime.now(timezone.utc)
+        today_str = now.strftime("%Y-%m-%d")
+        yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+
+        existing_log = await DailyActivityLogModel.find_one({
+            "user_id": str(user.id),
+            "date_str": today_str
+        })
+
+        if not existing_log:
+            new_log = DailyActivityLogModel(
+                user_id=str(user.id),
+                date_str=today_str,
+                activities_count=1,
+                xp_earned=xp
+            )
+            await new_log.insert()
+
+            user.stats.current_streak_days = await compute_user_streak(str(user.id))
+            user.stats.total_xp = (user.stats.total_xp or 0) + xp
+            user.last_login_at = now
+            await user.save()
+        else:
+            existing_log.activities_count += 1
+            existing_log.xp_earned = (existing_log.xp_earned or 0) + xp
+            await existing_log.save()
+
+            user.stats.current_streak_days = await compute_user_streak(str(user.id))
+            user.stats.total_xp = (user.stats.total_xp or 0) + xp
+            user.last_login_at = now
+            await user.save()
+
+    @staticmethod
     async def daily_checkin(current_user: dict) -> dict:
         user_id = current_user.get("_id") or current_user.get("user_id") or current_user.get("id")
         user = await _get_user_by_id(user_id)
@@ -446,10 +574,10 @@ class UserService:
         today_str = now.strftime("%Y-%m-%d")
         yesterday_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 
-        existing_log = await DailyActivityLogModel.find_one(
-            DailyActivityLogModel.user_id == str(user.id),
-            DailyActivityLogModel.date_str == today_str
-        )
+        existing_log = await DailyActivityLogModel.find_one({
+            "user_id": str(user.id),
+            "date_str": today_str
+        })
 
         today_checked_in = True
         if not existing_log:
@@ -461,30 +589,20 @@ class UserService:
             )
             await new_log.insert()
 
-            # Update Streak: check if user had activity yesterday
-            yesterday_log = await DailyActivityLogModel.find_one(
-                DailyActivityLogModel.user_id == str(user.id),
-                DailyActivityLogModel.date_str == yesterday_str
-            )
-
-            current_streak = user.stats.current_streak_days or 0
-            if yesterday_log:
-                user.stats.current_streak_days = current_streak + 1
-            else:
-                user.stats.current_streak_days = 1
-            
+            user.stats.current_streak_days = await compute_user_streak(str(user.id))
             user.last_login_at = now
             await user.save()
         else:
             existing_log.activities_count += 1
             await existing_log.save()
+            user.stats.current_streak_days = await compute_user_streak(str(user.id))
             user.last_login_at = now
             await user.save()
 
         # Fetch active dates
-        logs = await DailyActivityLogModel.find(
-            DailyActivityLogModel.user_id == str(user.id)
-        ).to_list()
+        logs = await DailyActivityLogModel.find({
+            "user_id": str(user.id)
+        }).to_list()
         activity_dates = [l.date_str for l in logs]
 
         return {
@@ -502,9 +620,9 @@ class UserService:
         if not user_id:
             return {"data": []}
 
-        logs = await DailyActivityLogModel.find(
-            DailyActivityLogModel.user_id == str(user_id)
-        ).sort("+date_str").to_list()
+        logs = await DailyActivityLogModel.find({
+            "user_id": str(user_id)
+        }).sort("+date_str").to_list()
 
         results = [
             {

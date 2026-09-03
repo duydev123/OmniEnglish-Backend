@@ -122,7 +122,7 @@ async def get_session_result(
 @router.get("/history", response_model=List[SpeakingHistoryItemResponse])
 async def get_speaking_history(
     page: int = Query(1, ge=1, description="Trang hiện tại"),
-    limit: int = Query(10, ge=1, le=50, description="Số lượng bài trên mỗi trang"),
+    limit: int = Query(10, ge=1, le=500, description="Số lượng bài trên mỗi trang"),
     topic_id: Optional[str] = Query(None, description="Lọc các câu lẻ thuộc Bộ đề (Topic) này"),
     prompt_id: Optional[str] = Query(None, description="Lọc theo đúng 1 câu hỏi (Prompt) cụ thể"),
     part: Optional[str] = Query(None, description="Lọc theo nhóm kỹ năng (VD: PART_1, PART_2, PART_3, SHADOWING)"),
@@ -132,7 +132,7 @@ async def get_speaking_history(
     Lấy danh sách lịch sử thi Speaking (các session tạo theo câu hỏi lẻ).
     Hỗ trợ lọc linh hoạt theo topic_id (bộ đề), prompt_id (câu hỏi), hoặc part.
     """
-    user_id = current_user.get("_id") or current_user.get("id")
+    user_id = str(current_user.get("_id") or current_user.get("user_id") or current_user.get("id") or "")
     
     # Gọi hàm Service vừa tối ưu
     return await SpeakingService.get_user_history(
@@ -154,7 +154,7 @@ async def get_speaking_history(
 @router.get("/shadowing/sentences", response_model=List[ShadowingSentenceResponse])
 async def get_shadowing_sentences(
     page: int = Query(1, ge=1, description="Trang hiện tại"),
-    limit: int = Query(10, ge=1, le=50, description="Số câu mỗi trang")
+    limit: int = Query(10, ge=1, le=500, description="Số câu mỗi trang")
 ):
     """Lấy danh sách các câu luyện Shadowing"""
     return await SpeakingService.get_shadowing_sentences(page, limit)
@@ -174,10 +174,10 @@ async def evaluate_shadowing(
 ):
     """
     Nộp file audio để chấm điểm Shadowing. 
-    Lưu ý: API này trả kết quả TỨC THÌ (Real-time), KHÔNG gọi Gemini AI và KHÔNG lưu lịch sử.
+    Hệ thống sử dụng Azure Speech phát âm real-time và lưu kết quả bài làm vào MongoDB.
     """
-    # Vì không lưu DB nên ta lấy current_user chỉ để đảm bảo user đã login
-    return await SpeakingService.evaluate_shadowing_segment(sentence_id, audio_file)
+    user_id = str(current_user.get("_id") or current_user.get("user_id") or current_user.get("id") or "")
+    return await SpeakingService.evaluate_shadowing_segment(sentence_id, audio_file, user_id=user_id)
 
 
 # --- MOCK ROUTE FOR TESTING ---

@@ -18,7 +18,7 @@ from main import app
 from beanie import init_beanie
 
 # Import các models
-from models.User import UserModel
+from models.User import UserModel, DailyActivityLogModel
 from models.Reading import (
     ReadingPassageModel,
     ReadingMultipleChoiceModel,
@@ -54,6 +54,7 @@ async def init_beanie_db(event_loop):
         database=db,
         document_models=[
             UserModel,
+            DailyActivityLogModel,
             ReadingPassageModel,
             ReadingMultipleChoiceModel,
             ReadingHeadingMatchingModel,

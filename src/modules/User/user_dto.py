@@ -45,6 +45,10 @@ class UserStatsResponse(BaseModel):
     avg_speaking_score: float
     avg_writing_score: float
     overall_score: float = 0.0
+    reading_progress_pct: float = 0.0
+    listening_progress_pct: float = 0.0
+    speaking_progress_pct: float = 0.0
+    writing_progress_pct: float = 0.0
 
 # --- Request Social Login (Google / Facebook) ---
 class SocialLoginRequest(BaseModel):

@@ -468,17 +468,34 @@ class SpeakingService:
             *search_criteria
         ).sort("-created_at").skip(skip).limit(limit).to_list()
         
-        return [
-            SpeakingHistoryItemResponse(
-                session_id=str(s.id),
-                test_type=s.test_type,
-                title=s.title,
-                overall_band_score=s.overall_band_score,
-                duration_str=s.duration_str or "00:00",
-                status=s.status,
-                created_at=s.created_at
-            ) for s in sessions
-        ]
+        res_items = []
+        for s in sessions:
+            # Safely extract topic_id from Beanie Link
+            tid = None
+            if s.topic_id:
+                tid = str(s.topic_id.ref.id) if hasattr(s.topic_id, "ref") else str(getattr(s.topic_id, "id", s.topic_id))
+
+            # Safely extract prompt_id from Beanie Link or questions_detail
+            pid = None
+            if s.prompt_id:
+                pid = str(s.prompt_id.ref.id) if hasattr(s.prompt_id, "ref") else str(getattr(s.prompt_id, "id", s.prompt_id))
+            elif s.questions_detail and len(s.questions_detail) > 0:
+                pid = s.questions_detail[0].prompt_id
+
+            res_items.append(
+                SpeakingHistoryItemResponse(
+                    session_id=str(s.id),
+                    test_type=s.test_type,
+                    title=s.title,
+                    topic_id=tid,
+                    prompt_id=pid,
+                    overall_band_score=s.overall_band_score,
+                    duration_str=s.duration_str or "00:00",
+                    status=s.status,
+                    created_at=s.created_at
+                )
+            )
+        return res_items
     
     
     
@@ -525,11 +542,11 @@ class SpeakingService:
         )
 
     @staticmethod
-    async def evaluate_shadowing_segment(sentence_id: str, audio_file: UploadFile) -> ShadowingEvaluateResponse:
+    async def evaluate_shadowing_segment(sentence_id: str, audio_file: UploadFile, user_id: Optional[str] = None) -> ShadowingEvaluateResponse:
         from beanie import PydanticObjectId
         from fastapi import HTTPException
         from .speaking_util import SpeakingUtil
-        from models.Speaking import ShadowingSentenceModel
+        from models.Speaking import ShadowingSentenceModel, UserSpeakingTestSessionModel, QuestionDetailItem, WordDetail, PhonemeDetail
         from .speaking_dto import ShadowingEvaluateResponse
 
         if not PydanticObjectId.is_valid(sentence_id):
@@ -542,10 +559,69 @@ class SpeakingService:
         # 1. Kiểm tra định dạng file
         await SpeakingUtil.validate_audio_file(audio_file)
         
-        # 2. BỎ ĐOẠN UPLOAD CLOUDINARY ĐI. 
-        # Ném thẳng audio_file vào hàm evaluate_shadowing_audio luôn
+        # 2. Đánh giá phát âm câu Shadowing qua Azure Speech
         eval_res = await SpeakingUtil.evaluate_shadowing_audio(audio_file, sentence.english_text)
         
+        # 3. Lưu kết quả vào UserSpeakingTestSessionModel nếu có user_id
+        if user_id:
+            try:
+                acc = float(eval_res.get("accuracy_score", 0.0))
+                flu = float(eval_res.get("fluency_score", 0.0))
+                avg_score = round((acc + flu) / 2, 1)
+
+                # Quy đổi ra thang band score (0.0 - 9.0)
+                band_score = round((avg_score / 100) * 9.0, 1) if avg_score > 0 else 0.0
+
+                formatted_words_detail = []
+                for w in eval_res.get("words_detail", []):
+                    phonemes = [
+                        PhonemeDetail(phoneme=p.get("phoneme", ""), accuracy_score=float(p.get("accuracy_score", 0.0)))
+                        for p in w.get("phonemes", [])
+                    ]
+                    formatted_words_detail.append(
+                        WordDetail(
+                            word=w.get("word", ""),
+                            accuracy_score=float(w.get("accuracy_score", 0.0)),
+                            error_type=w.get("error_type", "None"),
+                            phonemes=phonemes
+                        )
+                    )
+
+                q_item = QuestionDetailItem(
+                    prompt_id=sentence_id,
+                    question_text=sentence.english_text,
+                    user_transcript=eval_res.get("transcript", ""),
+                    pronunciation_score=acc,
+                    fluency_score=flu,
+                    segment_score=avg_score,
+                    words_detail=formatted_words_detail,
+                    is_graded=True
+                )
+
+                session = UserSpeakingTestSessionModel(
+                    user_id=user_id,
+                    test_type="SHADOWING",
+                    title=f"Shadowing: {sentence.english_text[:35]}...",
+                    overall_band_score=band_score,
+                    pronunciation_score=round(acc / 10, 1),
+                    fluency_score=round(flu / 10, 1),
+                    questions_detail=[q_item],
+                    status="COMPLETED"
+                )
+                await session.insert()
+
+                try:
+                    from modules.User.user_service import UserService, _get_user_by_id, recalculate_and_save_user_stats
+                    await UserService.record_activity(user_id, xp=20)
+                    u = await _get_user_by_id(user_id)
+                    if u:
+                        await recalculate_and_save_user_stats(u)
+                except Exception as err:
+                    print(f"[WARN] Error updating user stats after shadowing: {err}")
+            except Exception as e:
+                # Log lỗi nếu lưu session thất bại nhưng vẫn trả về kết quả cho client
+                print(f"[ERROR] Saving shadowing session failed: {e}")
+
         return ShadowingEvaluateResponse(
             accuracy_score=eval_res["accuracy_score"],
             fluency_score=eval_res["fluency_score"],

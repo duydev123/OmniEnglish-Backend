@@ -189,7 +189,8 @@ class ReadingService:
         
         session.time_remaining_seconds = time_remaining_seconds
         session.user_answers = user_answers
-        session.completed_questions = min(len(user_answers), session.total_questions)
+        non_empty_count = sum(1 for v in user_answers.values() if v and str(v).strip() != "")
+        session.completed_questions = min(non_empty_count, session.total_questions)
         session.updated_at = datetime.now(UTC)
         await session.save()
         
