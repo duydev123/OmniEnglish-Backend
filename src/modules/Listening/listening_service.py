@@ -74,6 +74,7 @@ class ListeningService:
                 audio_url=passage.audio_url,
                 time_limit_minutes=passage.time_limit_minutes,
                 total_questions=passage.total_questions,
+                total_dictation_sentences=len(passage.interactive_transcript) if passage.interactive_transcript else 0,
                 question_types=q_types
             )
 
@@ -270,7 +271,8 @@ class ListeningService:
     @staticmethod
     async def save_dictation_draft(
         session_id: str,
-        user_typed_text: str
+        user_typed_text: str,
+        completed_questions: Optional[int] = None
     ) -> Dict:
         """Lưu nháp dictation"""
         session = await ListeningService._get_session_by_id(session_id)
@@ -278,6 +280,8 @@ class ListeningService:
             raise ValueError("Session not found")
         
         session.user_typed_text = user_typed_text
+        if completed_questions is not None:
+            session.completed_questions = completed_questions
         session.updated_at = datetime.now(UTC)
         await session.save()
         
@@ -617,12 +621,15 @@ class ListeningService:
             passage = await s.passage_id.fetch()
             has_passage = passage and hasattr(passage, "id")
             accuracy_rate = s.accuracy_rate
+            total_q = passage.total_questions if has_passage and hasattr(passage, "total_questions") else s.completed_questions
+            if s.session_type == "DICTATION" and has_passage and hasattr(passage, "interactive_transcript") and passage.interactive_transcript:
+                total_q = len(passage.interactive_transcript)
             items.append({
                 "session_id": str(s.id),
                 "passage_id": str(passage.id) if has_passage else "",
                 "passage_title": passage.title if has_passage and hasattr(passage, "title") else "Unknown Passage",
                 "score": int(s.score),
-                "total_questions": passage.total_questions if has_passage and hasattr(passage, "total_questions") else s.completed_questions,
+                "total_questions": total_q,
                 "accuracy_rate": round(accuracy_rate, 2),
                 "status": s.status,
                 "session_type": s.session_type,

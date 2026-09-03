@@ -32,6 +32,7 @@ class ListeningPassageSummary(BaseModel):
     audio_url: str
     time_limit_minutes: int
     total_questions: int
+    total_dictation_sentences: int = 0
     question_types: List[str] = Field(default_factory=list)
 
 class ListeningPassageDetailResponse(BaseModel):
@@ -87,6 +88,7 @@ class ListeningDraftRequest(BaseModel):
     
     # Dành cho Dictation:
     user_typed_text: Optional[str] = None          # Chữ user vừa chép chính tả[cite: 12]
+    completed_questions: Optional[int] = None
     
     # Dành cho Comprehension:
     user_answers: Dict[str, str] = Field(default_factory=dict) # {"q_id": "answer"}[cite: 12]
